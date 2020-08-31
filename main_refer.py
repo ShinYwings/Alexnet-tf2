@@ -1,12 +1,6 @@
 import tensorflow as tf
 import numpy as np
 
-NEURON_BIASES = [0,1,0,1,1,1,1,1] # 1st layer~final layer
-LEARNING_RATE=0.01
-BATCH_SIZE=128
-MOMENTUM=0.9
-WEIGHT_DECAY=0.0005
-
 class AlexNet(object):
     
     def __init__(self, x, keep_prob, num_classes, skip_layer, weight_path='DEFAULT'):
@@ -22,7 +16,7 @@ class AlexNet(object):
                 isn't in the same folder as this code
         """
 
-        self.X = x  # x를 224x224로 해보고 그다음에 227x227로 바꾸기
+        self.X = x
         self.NUM_CLASSES = num_classes
         self.KEEP_PROB = keep_prob
         self.SKIP_LAYER = skip_layer
@@ -32,20 +26,19 @@ class AlexNet(object):
         else:
             self.WEIGHTS_PATH = weight_path
 
+        
         self.create()
 
     def create(self):
 
         # 1st layer: conv -> lrn -> pool
-        conv1 = conv(x=self.X, filter_height=11, filter_width=11, 
-                        num_filters=96, stride_y=4, stride_x=4, 
-                            padding='VAILD', name='conv1')
-        norm1 = lrn(conv1, radius=5, bias=1, alpha=1e-4, beta=0.75, name='norm1')
+        conv1 = conv(self.X, 11, 11, 96, 4, 4, padding='VAILD', name='conv1')
+        norm1 = lrn(conv1, 2, 2e-05, 0.75, name='norm1')
         pool1 = max_pool(norm1, 3, 3, 2, 2, padding='VALID', name='pool1')
         
-        # 2nd Layer: Conv (w ReLu)  -> Lrn -> Pool ~with 2 groups~
-        conv2 = conv(pool1, 5, 5, 256, 1, 1, name='conv2')
-        norm2 = lrn(conv2, radius=5, bias=1, alpha=1e-4, beta=0.75, name='norm2')
+        # 2nd Layer: Conv (w ReLu)  -> Lrn -> Pool with 2 groups
+        conv2 = conv(pool1, 5, 5, 256, 1, 1, groups=2, name='conv2')
+        norm2 = lrn(conv2, 2, 2e-05, 0.75, name='norm2')
         pool2 = max_pool(norm2, 3, 3, 2, 2, padding='VALID', name='pool2')
         
         # 3rd Layer: Conv (w ReLu)
@@ -102,14 +95,13 @@ class AlexNet(object):
                             session.run(var.assign(data))
 
 
-def conv(x="x", filter_height="filter_height", filter_width="filter_width",
-            num_filters="num_filters", stride_y="stride_y", stride_x="stride_x", 
-                name="name", padding='SAME', groups=1):
+def conv(x, filter_height, filter_width, num_filters, stride_y, stride_x, name, padding='SAME', groups=1):
     """Create a convolution layer.
     Adapted from: https://github.com/ethereon/caffe-tensorflow
     """
     # Get number of input channels
     input_channels = int(x.get_shape()[-1])
+    print("input_channels = ", input_channels)
 
     # Create lambda function for the convolution
     convolve = lambda i, k: tf.nn.conv2d(i, k, strides=[1, stride_y, stride_x, 1], padding=padding)
@@ -165,18 +157,17 @@ def fc(x, num_in, num_out, name, relu=True):
 
 def max_pool(x, filter_height, filter_width, stride_y, stride_x, name, padding='SAME'):
     """Create a max pooling layer."""
-    # 여기서 0, 3번째의 1의 의미: 첫번째 1은 batch에 대한 윈도우 크기, 마지막은 채널에 대한 윈도우 크기
     return tf.nn.max_pool(x, ksize=[1, filter_height, filter_width, 1],
                           strides=[1, stride_y, stride_x, 1],
                           padding=padding, name=name)
 
-def lrn(x, radius, alpha, beta, name, bias=1.0):
+
+def lrn(x="x", radius="radius", alpha="alpha", beta="beta", name="name", bias=1.0):
     """Create a local response normalization layer."""
     return tf.nn.local_response_normalization(x, depth_radius=radius,
                                               alpha=alpha, beta=beta,
                                               bias=bias, name=name)
-    #depth_radius = 주변에 몇개까지 할 것인지... 5이면 자신 기준 [-2,2]
-    # bias는 왜 1인지 모르겠음
+
 
 def dropout(x, keep_prob):
     """Create a dropout layer."""
