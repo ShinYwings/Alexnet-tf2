@@ -26,7 +26,6 @@ class AlexNet(object):
         else:
             self.WEIGHTS_PATH = weight_path
 
-        
         self.create()
 
     def create(self):
@@ -94,7 +93,6 @@ class AlexNet(object):
                             var = tf.get_variable('weights', trainable=False)
                             session.run(var.assign(data))
 
-
 def conv(x, filter_height, filter_width, num_filters, stride_y, stride_x, name, padding='SAME', groups=1):
     """Create a convolution layer.
     Adapted from: https://github.com/ethereon/caffe-tensorflow
@@ -135,7 +133,6 @@ def conv(x, filter_height, filter_width, num_filters, stride_y, stride_x, name, 
 
     return relu
 
-
 def fc(x, num_in, num_out, name, relu=True):
     """Create a fully connected layer."""
     with tf.variable_scope(name) as scope:
@@ -155,19 +152,17 @@ def fc(x, num_in, num_out, name, relu=True):
         return act
 
 
-def max_pool(x, filter_height, filter_width, stride_y, stride_x, name, padding='SAME'):
+def max_pool(x, filter_height,r filter_width, stride_y, stride_x, name, padding='SAME'):
     """Create a max pooling layer."""
     return tf.nn.max_pool(x, ksize=[1, filter_height, filter_width, 1],
                           strides=[1, stride_y, stride_x, 1],
                           padding=padding, name=name)
-
 
 def lrn(x="x", radius="radius", alpha="alpha", beta="beta", name="name", bias=1.0):
     """Create a local response normalization layer."""
     return tf.nn.local_response_normalization(x, depth_radius=radius,
                                               alpha=alpha, beta=beta,
                                               bias=bias, name=name)
-
 
 def dropout(x, keep_prob):
     """Create a dropout layer."""

@@ -1,183 +1,186 @@
-import tensorflow as tf
+import tensorflow as tf 
 import numpy as np
+import os
+import sys 
+import model
+import train
+import test
+from data_generator import unpickle
+from data_generator import load_CIFAR10_data as load_data
+from data_generator import load_CIFAR10_meta as load_meta
+from datetime import datetime
+from matplotlib import pyplot as plt
+from tensorflow.python.framework.ops import convert_to_tensor
+import tensorflow.data as tfds
+from tensorflow import keras
 
-NEURON_BIASES = [0,1,0,1,1,1,1,1] # 1st layer~final layer
-LEARNING_RATE=0.01
-BATCH_SIZE=128
-MOMENTUM=0.9
-WEIGHT_DECAY=0.0005
 
-class AlexNet(object):
+# Hyper parameters
+# TODO : argparse?
+INPUT_IMAGE_SIZE = 227 #WIDTH, HEIGHT  #x를 224x224로 해보고 그다음에 227x227로 바꾸기
+LEARNING_RATE = 0.04
+NUM_EPOCHS = 10
+NUM_CLASSES = 10    # CIFAR-10
+MOMENTUM = 0.9 # SGD + MOMENTUM
+BATCH_SIZE = 128
+DATASET_DIR = r"D:\cifar-10-batches-py" 
+
+# Fixed
+DROUPUT_PROP = 0.5
+ENCODING_STYLE = "utf-8"
+
+# How often we want to write the tf.summary data to disk
+DISPLAY_STEP = 20
+
+def preprocess_images(image, label):
     
-    def __init__(self, x, keep_prob, num_classes, skip_layer, weight_path='DEFAULT'):
+    global INPUT_IMAGE_SIZE
 
-        """Create the graph of the AlexNet model.
-        Args:
-            x: Placeholder for the input tensor.
-            keep_prob: Dropout probability.
-            num_classes: Number of classes in the dataset.
-            skip_layer: List of names of the layer, that get trained from
-                scratch
-            weights_path: Complete path to the pretrained weight file, if it
-                isn't in the same folder as this code
-        """
+    """N(0,1)로 norm"""
+    image = tf.image.per_image_standardization(image)
+    
+    """resize images from 32X32 to INPUT_IMAGE_SIZE x INPUT_IMAGE_SIZE (alexnet standard)"""
+    image = tf.image.resize(image, (INPUT_IMAGE_SIZE,INPUT_IMAGE_SIZE))
 
-        self.X = x  # x를 224x224로 해보고 그다음에 227x227로 바꾸기
-        self.NUM_CLASSES = num_classes
-        self.KEEP_PROB = keep_prob
-        self.SKIP_LAYER = skip_layer
+    return image, label
 
-        if weight_path == 'DEFAULT':
-            self.WEIGHTS_PATH = 'bvlc_alexnet.npy'
-        else:
-            self.WEIGHTS_PATH = weight_path
+def get_run_logdir():
+    run_id = datetime.time.strftime("run_%Y_%m_%d-%H_%M_%S")
+    
+    return os.path.join(root_logdir, run_id)
 
-        self.create()
+if __name__ == "__main__":
 
-    def create(self):
+    # global INPUT_IMAGE_SIZE
+    # global LEARNING_RATE
+    # global NUM_EPOCHS
+    # global BATCH_SIZE
+    # global DROUPUT_PROP
+    # global DISPLAY_STEP
+    # global DATASET_DIR
+    # global ENCODING_STYLE
 
-        # 1st layer: conv -> lrn -> pool
-        conv1 = conv(x=self.X, filter_height=11, filter_width=11, 
-                        num_filters=96, stride_y=4, stride_x=4, 
-                            padding='VAILD', name='conv1')
-        norm1 = lrn(conv1, radius=5, bias=1, alpha=1e-4, beta=0.75, name='norm1')
-        pool1 = max_pool(norm1, 3, 3, 2, 2, padding='VALID', name='pool1')
-        
-        # 2nd Layer: Conv (w ReLu)  -> Lrn -> Pool ~with 2 groups~
-        conv2 = conv(pool1, 5, 5, 256, 1, 1, name='conv2')
-        norm2 = lrn(conv2, radius=5, bias=1, alpha=1e-4, beta=0.75, name='norm2')
-        pool2 = max_pool(norm2, 3, 3, 2, 2, padding='VALID', name='pool2')
-        
-        # 3rd Layer: Conv (w ReLu)
-        conv3 = conv(pool2, 3, 3, 384, 1, 1, name='conv3')
+    fc_layers= ['fc8', 'fc7', 'fc6']
 
-        # 4th Layer: Conv (w ReLu) splitted into two groups
-        conv4 = conv(conv3, 3, 3, 384, 1, 1, groups=2, name='conv4')
+    root_dir=os.getcwd()
+    dataset_dir=os.path.abspath(DATASET_DIR)
+    sys.path.append(root_dir)
+    sys.path.append(dataset_dir)
 
-        # 5th Layer: Conv (w ReLu) -> Pool splitted into two groups
-        conv5 = conv(conv4, 3, 3, 256, 1, 1, groups=2, name='conv5')
-        pool5 = max_pool(conv5, 3, 3, 2, 2, padding='VALID', name='pool5')
+    """Path for tf.summary.FileWriter and to store model checkpoints"""
+    filewriter_path = os.path.join(root_dir, "tensorboard")
+    checkpoint_path = os.path.join(root_dir, "checkpoints")
 
-        # 6th Layer: Flatten -> FC (w ReLu) -> Dropout
-        flattened = tf.reshape(pool5, [-1, 6*6*256])
-        fc6 = fc(flattened, 6*6*256, 4096, name='fc6')
-        dropout6 = dropout(fc6, self.KEEP_PROB)
+    """Create parent path if it doesn't exist"""
+    if not os.path.isdir(checkpoint_path):
+        os.mkdir(checkpoint_path)
 
-        # 7th Layer: FC (w ReLu) -> Dropout
-        fc7 = fc(dropout6, 4096, 4096, name='fc7')
-        dropout7 = dropout(fc7, self.KEEP_PROB)
+    if not os.path.isdir(filewriter_path):
+        os.mkdir(filewriter_path)
 
-        # 8th Layer: FC and return unscaled activations
-        self.fc8 = fc(dropout7, 4096, self.NUM_CLASSES, relu=False, name='fc8')
+    cifar_datasets = unpickle(dataset_dir)
 
-    def load_initial_weights(self, session):
-        """Load weights from file into network.
-        As the weights from http://www.cs.toronto.edu/~guerzhoy/tf_alexnet/
-        come as a dict of lists (e.g. weights['conv1'] is a list) and not as
-        dict of dicts (e.g. weights['conv1'] is a dict with keys 'weights' &
-        'biases') we need a special load function
-        """
-        # Load the weights into memory
-        weights_dict = np.load(self.WEIGHTS_PATH, encoding='bytes').item()
+    batch_size, class_names = load_meta(cifar_datasets[0])  # dataset의 첫번째 파일이 metadata 
 
-        # Loop over all layer names stored in the weights dict
-        for op_name in weights_dict:
+    """[metadata, 5 * training batches, test batch]"""
+    (train_images, train_labels), (test_images, test_labels) = load_data(cifar_datasets)
 
-            # Check if layer should be trained from scratch
-            if op_name not in self.SKIP_LAYER:
+    validation_images, validation_labels = train_images[:5000], train_labels[:5000]
+    train_images, train_labels = train_images[5000:], train_labels[5000:]
 
-                with tf.variable_scope(op_name, reuse=True):
+    train_ds = tf.data.Dataset.from_tensor_slices((train_images, train_labels))
+    test_ds = tf.data.Dataset.from_tensor_slices((test_images, test_labels))
+    val_ds = tf.data.Dataset.from_tensor_slices((validation_images, validation_labels))
 
-                    # Assign weights/biases to their corresponding tf variable
-                    for data in weights_dict[op_name]:
+    """check images are all right""" 
+    # plt.figure(figsize=(20,20))
 
-                        # Biases
-                        if len(data.shape) == 1:
-                            var = tf.get_variable('biases', trainable=False)
-                            session.run(var.assign(data))
+    # for i, (image,label) in enumerate(train_ds.take(5)):
+    #     ax = plt.subplot(5,5,i+1)
+    #     plt.imshow(image)
+    #     plt.title(class_names[label].decode(ENCODING_STYLE))
+    #     plt.axis('off')
+    # plt.show()
 
-                        # Weights
-                        else:
-                            var = tf.get_variable('weights', trainable=False)
-                            session.run(var.assign(data))
-
-
-def conv(x="x", filter_height="filter_height", filter_width="filter_width",
-            num_filters="num_filters", stride_y="stride_y", stride_x="stride_x", 
-                name="name", padding='SAME', groups=1):
-    """Create a convolution layer.
-    Adapted from: https://github.com/ethereon/caffe-tensorflow
     """
-    # Get number of input channels
-    input_channels = int(x.get_shape()[-1])
+    Input Pipeline
+    
+    experimental: API for input pipelines
+    cardinality: size of a set
+        > in DB, 중복도가 낮으면 카디널리티가 높다. 중복도가 높으면 카디널리티가 낮다.
+    """
+    train_ds_size = tf.data.experimental.cardinality(train_ds).numpy()
+    test_ds_size = tf.data.experimental.cardinality(test_ds).numpy()
+    val_ds_size = tf.data.experimental.cardinality(val_ds).numpy()
 
-    # Create lambda function for the convolution
-    convolve = lambda i, k: tf.nn.conv2d(i, k, strides=[1, stride_y, stride_x, 1], padding=padding)
+    print("Training data size: ", train_ds_size)
+    print("Test data size: ", test_ds_size)
+    print("Val data size: ", val_ds_size)
 
-    with tf.variable_scope(name) as scope:
-        # Create tf variables for the weights and biases of the conv layer
-        weights = tf.get_variable('weights', shape=[filter_height,
-                                                    filter_width,
-                                                    input_channels/groups,
-                                                    num_filters])
-        biases = tf.get_variable('biases', shape=[num_filters])
+    """
+    [3 primary operations]
+        1. Preprocessing the data within the dataset
+        2. Shuffle the dataset
+        3. Batch data within the dataset
+    
+    drop_ramainder: 주어진 dataset을 batch_size 나눠주고 
+                    batch_size 만족 못하는 나머지들을 남길지 버릴지
 
-    if groups == 1:
-        conv = convolve(x, weights)
+    prefetch(1): 데이터셋은 항상 한 배치가 미리 준비되도록 최선을 다합니다.
+                 훈련 알고리즘이 한 배치로 작업을 하는 동안 이 데이터셋이 동시에 다음 배치를 준비
+                 합니다. (디스크에서 데이터를 읽고 전처리)
+    """
+    train_ds = train_ds.map(preprocess_images, num_parallel_calls=5).shuffle(buffer_size=train_ds_size).batch(batch_size=BATCH_SIZE, drop_remainder=True)
+    test_ds = (test_ds.map(preprocess_images, num_parallel_calls=5)
+                            .shuffle(buffer_size=test_ds_size)
+                            .batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(1))
+    val_ds = (val_ds.map(preprocess_images, num_parallel_calls=5)
+                            .shuffle(buffer_size=val_ds_size)
+                            .batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(1))
+    """
+    Tensorboard
 
-    # In the cases of multiple groups, split inputs & weights and
-    else:
-        # Split input and weights and convolve them separately
-        input_groups = tf.split(axis=3, num_or_size_splits=groups, value=x)
-        weight_groups = tf.split(axis=3, num_or_size_splits=groups, value=weights)
-        output_groups = [convolve(i, k) for i, k in zip(input_groups, weight_groups)]
+    monitoring
+        - training loss
+        - training accurarcy
+        - validation loss
+        - validation accuracy
 
-        # Concat the convolved output together again
-        conv = tf.concat(axis=3, values=output_groups)
+    get_run_logdir: return the location of the exact directory that is named
+                    according to the current time the training phase starts
+    """
 
-    # Add biases
-    bias = tf.reshape(tf.nn.bias_add(conv, biases), tf.shape(conv))
+    root_logdir = os.path.join(os.curdir, "logs\\fit\\")
 
-    # Apply relu function
-    relu = tf.nn.relu(bias, name=scope.name)
+    run_logdir = get_run_logdir()
 
-    return relu
+    tensorboard_cb = keras.callbacks.TensorBoard(run_logdir)
 
+    """
+    Training and Results
 
-def fc(x, num_in, num_out, name, relu=True):
-    """Create a fully connected layer."""
-    with tf.variable_scope(name) as scope:
+    To train the network, we have to compile it.
 
-        # Create tf variables for the weights and biases
-        weights = tf.get_variable('weights', shape=[num_in, num_out], trainable=True)
-        biases = tf.get_variable('biases', [num_out], trainable=True)
+    Compilation processes
+        - Loss function
+        - Optimization Algorithm
+        - Learning Rate
+    """
+    
+    _iterator = iter(train_ds)
 
-        # Matrix multiply weights and inputs and add bias
-        act = tf.nn.xw_plus_b(x, weights, biases, name=scope.name)
+    batch = _iterator.get_next()
 
-    if relu:
-        # Apply ReLu non linearity
-        relu = tf.nn.relu(act)
-        return relu
-    else:
-        return act
+    alexnet = model.AlexNet(x,dropout_prob=DROUPUT_PROP, num_classes=NUM_CLASSES, fc_layer=fc_layers)
+    
+    # nesterov: SGD momentum은 가중치의 변화량에다가 모멘텀을 곱한 다음에 가중치를 업데이트를 해주는 반면,
+    #           nesterov는 
+    sgd = tf.optimizers.SGD(learning_rate=LEARNING_RATE, momentum=MOMENTUM, nesterov=False)
+    train(alexnet, optimizer= sgd, dataset_train=train_ds, dataset_val=val_ds, epochs=NUM_EPOCHS)
+    model.compile(optimizer=optimizer, loss=loss_fn)
+    model.fit(dataset)
+    keras.Model.fit(dataset)
 
-
-def max_pool(x, filter_height, filter_width, stride_y, stride_x, name, padding='SAME'):
-    """Create a max pooling layer."""
-    # 여기서 0, 3번째의 1의 의미: 첫번째 1은 batch에 대한 윈도우 크기, 마지막은 채널에 대한 윈도우 크기
-    return tf.nn.max_pool(x, ksize=[1, filter_height, filter_width, 1],
-                          strides=[1, stride_y, stride_x, 1],
-                          padding=padding, name=name)
-
-def lrn(x, radius, alpha, beta, name, bias=1.0):
-    """Create a local response normalization layer."""
-    return tf.nn.local_response_normalization(x, depth_radius=radius,
-                                              alpha=alpha, beta=beta,
-                                              bias=bias, name=name)
-    #depth_radius = 주변에 몇개까지 할 것인지... 5이면 자신 기준 [-2,2]
-    # bias는 왜 1인지 모르겠음
-
-def dropout(x, keep_prob):
-    """Create a dropout layer."""
-    return tf.nn.dropout(x, keep_prob)
+    summary_writer = tf.summary.create_file_writer('/tmp/summaries')
+    with summary_writer.as_default():
+        tf.summary.scalar('loss', 0.1, step=DISPLAY_STEP)
