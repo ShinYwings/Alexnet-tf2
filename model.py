@@ -2,92 +2,100 @@ import tensorflow as tf
 import numpy as np
 from datetime import datetime
 from data_generator import unpickle
+import tensorflow.keras
+from tensorflow.keras import Model
 
+class AlexNet(Model):
 
-def Alexnet(X, DROP_PROB="DROP_PROB", NUM_CLASSES="NUM_CLASSES", FC_LAYERS="FC_LAYERS", weight_path='DEFAULT'):
+    # def __init__(self):
+    #     super(AlexNet, self).__init__()
 
-    """Create the graph of the AlexNet model.
-    Args:
-        x: Placeholder for the input tensor.
-        dropout_prob: Dropout probability.
-        num_classes: Number of classes in the dataset.
-        fc_layer: List of names of the layer, that get trained from
-            scratch
-        weights_path: Complete path to the pretrained weight file, if it
-            isn't in the same folder as this code
-    """
-    if weight_path == 'DEFAULT':
-        WEIGHTS_PATH = 'bvlc_alexnet.npy'
-    else:
-        WEIGHTS_PATH = weight_path
+    #     self.conv1 = lambda x: 
 
-    # 1st layer: conv -> lrn -> pool
-    conv1 = conv(x=X, filter_height=11, filter_width=11, 
-                    num_filters=96, stride_y=4, stride_x=4, 
-                        padding='VAILD', name='conv1')
-    norm1 = lrn(conv1, radius=5, bias=1, alpha=1e-4, beta=0.75, name='norm1')
-    pool1 = max_pool(norm1, 3, 3, 2, 2, padding='VALID', name='pool1')
-    
-    # 2nd Layer: Conv (w ReLu)  -> Lrn -> Pool ~with 2 groups~
-    conv2 = conv(pool1, 5, 5, 256, 1, 1, name='conv2')
-    norm2 = lrn(conv2, radius=5, bias=1, alpha=1e-4, beta=0.75, name='norm2')
-    pool2 = max_pool(norm2, 3, 3, 2, 2, padding='VALID', name='pool2')
-    
-    # 3rd Layer: Conv (w ReLu)
-    conv3 = conv(pool2, 3, 3, 384, 1, 1, name='conv3')
+    def call(self, X, DROP_PROB="DROP_PROB", NUM_CLASSES="NUM_CLASSES", FC_LAYERS="FC_LAYERS", weight_path='DEFAULT'):
 
-    # 4th Layer: Conv (w ReLu) splitted into two groups
-    conv4 = conv(conv3, 3, 3, 384, 1, 1, name='conv4')
+        """Create the graph of the AlexNet model.
+        Args:
+            x: Placeholder for the input tensor.
+            dropout_prob: Dropout probability.
+            num_classes: Number of classes in the dataset.
+            fc_layer: List of names of the layer, that get trained from
+                scratch
+            weights_path: Complete path to the pretrained weight file, if it
+                isn't in the same folder as this code
+        """
+        if weight_path == 'DEFAULT':
+            WEIGHTS_PATH = 'bvlc_alexnet.npy'
+        else:
+            WEIGHTS_PATH = weight_path
 
-    # 5th Layer: Conv (w ReLu) -> Pool splitted into two groups
-    conv5 = conv(conv4, 3, 3, 256, 1, 1, groups=2, name='conv5')
-    norm5 = lrn(conv5, radius=5, bias=1, alpha=1e-4, beta=0.75, name="norm5")
-    pool5 = max_pool(norm5, 3, 3, 2, 2, padding='VALID', name='pool5')
+        # 1st layer: conv -> lrn -> pool
+        conv1 = conv(x=X, filter_height=11, filter_width=11, 
+                        num_filters=96, stride_y=4, stride_x=4, 
+                            padding='VAILD', name='conv1')
+        norm1 = lrn(conv1, radius=5, bias=1, alpha=1e-4, beta=0.75, name='norm1')
+        pool1 = max_pool(norm1, 3, 3, 2, 2, padding='VALID', name='pool1')
+        
+        # 2nd Layer: Conv (w ReLu)  -> Lrn -> Pool ~with 2 groups~
+        conv2 = conv(pool1, 5, 5, 256, 1, 1, name='conv2')
+        norm2 = lrn(conv2, radius=5, bias=1, alpha=1e-4, beta=0.75, name='norm2')
+        pool2 = max_pool(norm2, 3, 3, 2, 2, padding='VALID', name='pool2')
+        
+        # 3rd Layer: Conv (w ReLu)
+        conv3 = conv(pool2, 3, 3, 384, 1, 1, name='conv3')
 
-    # 6th Layer: Flatten -> FC (w ReLu) -> Dropout
-    flattened = tf.reshape(pool5, [-1, 6*6*256])
-    fc6 = fc(flattened, 6*6*256, 4096, name='fc6')
-    dropout6 = dropout(fc6, DROP_PROB)
+        # 4th Layer: Conv (w ReLu) splitted into two groups
+        conv4 = conv(conv3, 3, 3, 384, 1, 1, name='conv4')
 
-    # 7th Layer: FC (w ReLu) -> Dropout
-    fc7 = fc(dropout6, 4096, 4096, name='fc7')
-    dropout7 = dropout(fc7, DROP_PROB)
+        # 5th Layer: Conv (w ReLu) -> Pool splitted into two groups
+        conv5 = conv(conv4, 3, 3, 256, 1, 1, groups=2, name='conv5')
+        norm5 = lrn(conv5, radius=5, bias=1, alpha=1e-4, beta=0.75, name="norm5")
+        pool5 = max_pool(norm5, 3, 3, 2, 2, padding='VALID', name='pool5')
 
-    # 8th Layer: FC and return unscaled activations
-    fc8 = fc(dropout7, 4096, NUM_CLASSES, relu=False, name='fc8')
+        # 6th Layer: Flatten -> FC (w ReLu) -> Dropout
+        flattened = tf.reshape(pool5, [-1, 6*6*256])
+        fc6 = fc(flattened, 6*6*256, 4096, name='fc6')
+        dropout6 = dropout(fc6, DROP_PROB)
 
-    cost = tf.nn.softmax(fc8, name="cost")
+        # 7th Layer: FC (w ReLu) -> Dropout
+        fc7 = fc(dropout6, 4096, 4096, name='fc7')
+        dropout7 = dropout(fc7, DROP_PROB)
 
-    return cost
+        # 8th Layer: FC and return unscaled activations
+        fc8 = fc(dropout7, 4096, NUM_CLASSES, relu=False, name='fc8')
 
-# def load_initial_weights(session):
-#     """Load weights from file into network.
-#     As the weights from http://www.cs.toronto.edu/~guerzhoy/tf_alexnet/
-#     come as a dict of lists (e.g. weights['conv1'] is a list) and not as
-#     dict of dicts (e.g. weights['conv1'] is a dict with keys 'weights' &
-#     'biases') we need a special load function
-#     """
-#     # Load the weights into memory
-#     weights_dict = np.load(WEIGHTS_PATH, encoding='bytes').item()
+        cost = tf.nn.softmax(fc8, name="cost")
 
-#     # Loop over all layer names stored in the weights dict
-#     for op_name in weights_dict:
+        return cost
 
-#         # Check if layer should be trained from scratch
-#         if op_name not in FC_LAYERS:
+    # def load_initial_weights(session):
+    #     """Load weights from file into network.
+    #     As the weights from http://www.cs.toronto.edu/~guerzhoy/tf_alexnet/
+    #     come as a dict of lists (e.g. weights['conv1'] is a list) and not as
+    #     dict of dicts (e.g. weights['conv1'] is a dict with keys 'weights' &
+    #     'biases') we need a special load function
+    #     """
+    #     # Load the weights into memory
+    #     weights_dict = np.load(WEIGHTS_PATH, encoding='bytes').item()
 
-#             # Assign weights/biases to their corresponding tf variable
-#             for data in weights_dict[op_name]:
+    #     # Loop over all layer names stored in the weights dict
+    #     for op_name in weights_dict:
 
-#                 # Biases
-#                 if len(data.shape) == 1:
-#                     var = tf.Variable(name='biases', trainable=False)
-#                     var.assign(data)
+    #         # Check if layer should be trained from scratch
+    #         if op_name not in FC_LAYERS:
 
-#                 # Weights
-#                 else:
-#                     var = tf.Variable(name='weights', trainable=False)
-#                     var.assign(data)
+    #             # Assign weights/biases to their corresponding tf variable
+    #             for data in weights_dict[op_name]:
+
+    #                 # Biases
+    #                 if len(data.shape) == 1:
+    #                     var = tf.Variable(name='biases', trainable=False)
+    #                     var.assign(data)
+
+    #                 # Weights
+    #                 else:
+    #                     var = tf.Variable(name='weights', trainable=False)
+    #                     var.assign(data)
 
 
 def conv(x="x", filter_height="filter_height", filter_width="filter_width",
@@ -157,14 +165,14 @@ def max_pool(x, filter_height, filter_width, stride_y, stride_x, name, padding='
     """Create a max pooling layer."""
     # 여기서 0, 3번째의 1의 의미: 첫번째 1은 batch에 대한 윈도우 크기, 마지막은 채널에 대한 윈도우 크기
     return tf.nn.max_pool(x, ksize=[1, filter_height, filter_width, 1],
-                          strides=[1, stride_y, stride_x, 1],
-                          padding=padding, name=name)
+                        strides=[1, stride_y, stride_x, 1],
+                        padding=padding, name=name)
 
 def lrn(x, radius, alpha, beta, name, bias=2.0):
     """Create a local response normalization layer."""
     return tf.nn.local_response_normalization(x, depth_radius=radius,
-                                              alpha=alpha, beta=beta,
-                                              bias=bias, name=name)
+                                            alpha=alpha, beta=beta,
+                                            bias=bias, name=name)
     #depth_radius = 주변에 몇개까지 할 것인지... 5이면 자신 기준 [-2,2]
     # bias: hyperparameter k in the paper
 

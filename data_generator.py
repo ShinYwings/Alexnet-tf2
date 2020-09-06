@@ -4,6 +4,9 @@ import os
 import regex
 import shutil
 import struct
+import matplotlib.pyplot as plt
+
+INPUT_IMAGE_SIZE = 227 #WIDTH, HEIGHT  #x를 224x224로 해보고 그다음에 227x227로 바꾸기
 
 def unpickle(dir):
     
@@ -62,6 +65,8 @@ def load_CIFAR10_meta(meta_file):
 
 def load_CIFAR10_data(file_list):
 
+    global INPUT_IMAGE_SIZE
+
     num_cases_per_batch, label_names, num_vis = file_list[0].values()
     
     # batch_label = 5개 배치중 몇번째 배치인지
@@ -74,12 +79,13 @@ def load_CIFAR10_data(file_list):
     training data generator
     """
 
-    # train_images = np.zeros((50000,32,32,3), dtype=np.uint8)
-    # train_labels = np.zeros((50000), dtype=np.uint8)
     train_images = list()
     train_labels = list()
+    test_images = list()
+    test_labels = list()
 
-    with tf.device("/gpu:1"):
+    with tf.device('/cpu:0'):
+
         for j in range(1,6):
 
             batch_label, labels, data, filenames = file_list[j].values()
@@ -90,38 +96,44 @@ def load_CIFAR10_data(file_list):
             for i in range(0,num_cases_per_batch):
                 
                 loc = i+1000*(j-1)
-                # np.copyto(train_images[loc], data[i].reshape((32,32,3), order="F"))
-                # np.copyto(train_labels[loc], labels[i], order="F")
-                
+
                 # RGB to BGR same as train_images[i,:,:,::-1]
                 # train_images[loc] = tf.reverse(train_images[loc], axis=[-1])  
                 
                 img = data[i].reshape((32,32,3), order="F")
                 img = img.astype("float32") / 255.0
-                train_images.append(tf.reverse(img, axis=[-1]))
+                
+                """N(0,1)로 norm"""
+                img = tf.image.per_image_standardization(img)
+                
+                """resize images from 32X32 to INPUT_IMAGE_SIZE x INPUT_IMAGE_SIZE (alexnet standard)"""
+                img2 = tf.image.resize(img[1:], (INPUT_IMAGE_SIZE,INPUT_IMAGE_SIZE))
+                
+                train_images.append(tf.reverse(img2, axis=[-1]))
                 train_labels.append(labels[i])
 
         """
         test data generator
         """
-        batch_label, test_labels, data, filenames = file_list[6].values()
+        batch_label, labels, data, filenames = file_list[6].values()
 
         print("load ",batch_label.decode("utf-8"))
 
         # test_images = np.zeros((10000,32,32,3), dtype=np.uint8)
-        test_images = list()
 
         # binary to img    
-        for i in data: 
-            # range(0,num_cases_per_batch):     
+        for i in range(0,num_cases_per_batch):    
                 
             # np.copyto(test_images[i], data[i].reshape((32,32,3), order="F"))
             
             # RGB to BGR same as train_images[i,:,:,::-1]
             # test_images[i] = tf.reverse(test_images[i], axis=[-1])    
 
-            img = i.reshape((32,32,3), order="F")
+            img = data[i].reshape((32,32,3), order="F")
             img = img.astype("float32") / 255.0
-            test_images.append(tf.reverse(img, axis=[-1]))
+            img = tf.image.per_image_standardization(img)
+            img2 = tf.image.resize(img[1:], (INPUT_IMAGE_SIZE,INPUT_IMAGE_SIZE))
+            test_images.append(tf.reverse(img2, axis=[-1]))
+            test_labels.append(labels[i])
 
     return (train_images, train_labels), (test_images, test_labels)

@@ -2,8 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from skimage import io, transform 
 from numpy import linalg as LA
+import tensorflow as tf 
 
-def data_aug(img = img):
+def data_aug(img = "img", evecs_mat= "evecs_mat", evals= "evals"):
 	mu = 0
 	sigma = 0.1
 	feature_vec=np.matrix(evecs_mat)
@@ -14,14 +15,16 @@ def data_aug(img = img):
 	se[1][0] = np.random.normal(mu, sigma)*evals[1]
 	se[2][0] = np.random.normal(mu, sigma)*evals[2]
 	se = np.matrix(se)
-	val = feature_vec*se
+	val = tf.matmul(feature_vec, se)
 
 	# Parse through every pixel value.
-	for i in xrange(img.shape[0]):
-		for j in xrange(img.shape[1]):
+	for i in range(img.shape[0]):
+		for j in range(img.shape[1]):
 			# Parse through every dimension.
-			for k in xrange(img.shape[2]):
+			for k in range(img.shape[2]):
 				img[i,j,k] = float(img[i,j,k]) + float(val[k])
+    
+    return img
 
 
 def intensity_RGB(image_list = "image_list"):
@@ -64,5 +67,5 @@ def intensity_RGB(image_list = "image_list"):
     # perturbing color in image[0]
     # re-scaling from 0-1
     img = imlist[0]/255.0
-    data_aug(img)
+    data_aug(img, m, evals)
     plt.imshow(img)
