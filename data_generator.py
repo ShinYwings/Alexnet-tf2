@@ -1,12 +1,8 @@
 import tensorflow as tf 
 import numpy as np 
 import os
-import regex
-import shutil
-import struct
 import matplotlib.pyplot as plt
-
-INPUT_IMAGE_SIZE = 227 #WIDTH, HEIGHT  #x를 224x224로 해보고 그다음에 227x227로 바꾸기
+import cv2
 
 def unpickle(dir):
     
@@ -63,77 +59,63 @@ def load_CIFAR10_meta(meta_file):
     return num_cases_per_batch, label_names
 
 
-def load_CIFAR10_data(file_list):
+def load_CIFAR10_data(ds_dir="dsdir"):
 
-    global INPUT_IMAGE_SIZE
-
-    num_cases_per_batch, label_names, num_vis = file_list[0].values()
     
-    # batch_label = 5개 배치중 몇번째 배치인지
-    # data : 한 배열마다 3072개 RGB 각 채널당 1024개  R->G->B 순서대로
-    # labels: a list of 10000 numbers in the range 0-9. 
-    #         The number at index i indicates the label of 
-    #         the ith image in the array data.
-
     """
     training data generator
     """
-
     train_images = list()
     train_labels = list()
     test_images = list()
     test_labels = list()
 
-    with tf.device('/cpu:0'):
+    for j in range(1,6):
 
-        for j in range(1,6):
-
-            batch_label, labels, data, filenames = file_list[j].values()
-            
-            print("load ",batch_label.decode("utf-8"))
-
-            # binary to img    
-            for i in range(0,num_cases_per_batch):
-                
-                loc = i+1000*(j-1)
-
-                # RGB to BGR same as train_images[i,:,:,::-1]
-                # train_images[loc] = tf.reverse(train_images[loc], axis=[-1])  
-                
-                img = data[i].reshape((32,32,3), order="F")
-                img = img.astype("float32") / 255.0
-                
-                """N(0,1)로 norm"""
-                img = tf.image.per_image_standardization(img)
-                
-                """resize images from 32X32 to INPUT_IMAGE_SIZE x INPUT_IMAGE_SIZE (alexnet standard)"""
-                img2 = tf.image.resize(img[1:], (INPUT_IMAGE_SIZE,INPUT_IMAGE_SIZE))
-                
-                train_images.append(tf.reverse(img2, axis=[-1]))
-                train_labels.append(labels[i])
-
-        """
-        test data generator
-        """
-        batch_label, labels, data, filenames = file_list[6].values()
-
-        print("load ",batch_label.decode("utf-8"))
-
-        # test_images = np.zeros((10000,32,32,3), dtype=np.uint8)
+        batch_label, labels, data, filenames = file_list[j].values()
+        
+        print("load ",batch_label.decode("utf-8"), "and adjust each image size 32X32 to 256X256 (CIFAR-10)")
 
         # binary to img    
-        for i in range(0,num_cases_per_batch):    
-                
-            # np.copyto(test_images[i], data[i].reshape((32,32,3), order="F"))
+        for i in range(0,num_cases_per_batch):
             
+            loc = i+10000*(j-1)
+
             # RGB to BGR same as train_images[i,:,:,::-1]
-            # test_images[i] = tf.reverse(test_images[i], axis=[-1])    
-
+            # train_images[loc] = tf.reverse(train_images[loc], axis=[-1])  
+            
+            # Fortran 스타일: N 자로 삽입 column prior
+            #    C    스타일: Z 자로 삽입 row prior
             img = data[i].reshape((32,32,3), order="F")
-            img = img.astype("float32") / 255.0
             img = tf.image.per_image_standardization(img)
-            img2 = tf.image.resize(img[1:], (INPUT_IMAGE_SIZE,INPUT_IMAGE_SIZE))
-            test_images.append(tf.reverse(img2, axis=[-1]))
-            test_labels.append(labels[i])
+            brg_img = tf.reverse(img, axis=[-1])
+            a = np.array(brg_img)
+            y = cv2.resize(a, (256,256), interpolation=cv2.INTER_LINEAR)
+            train_images.append(y)
+            train_labels.append(labels[i])
 
+    """
+    test data generator
+    """
+    batch_label, labels, data, filenames = file_list[6].values()
+
+    print("load ",batch_label.decode("utf-8"), "and adjust each image size 32X32 to 256X256 (CIFAR-10)")
+
+    # binary to img    
+    for i in range(0,num_cases_per_batch):    
+        
+        # np.copyto(test_images[i], data[i].reshape((32,32,3), order="F"))
+        
+        # RGB to BGR same as train_images[i,:,:,::-1]
+        # test_images[i] = tf.reverse(test_images[i], axis=[-1])    
+
+        img = data[i].reshape((32,32,3), order="F")
+        img = tf.image.per_image_standardization(img)
+        brg_img = tf.reverse(img, axis=[-1])
+        a = np.array(brg_img)
+        y = cv2.resize(a, (256,256), interpolation=cv2.INTER_LINEAR)
+        test_images.append(y)
+        test_labels.append(labels[i])
+    
+    print("finish loading all images")
     return (train_images, train_labels), (test_images, test_labels)

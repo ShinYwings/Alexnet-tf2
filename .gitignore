@@ -1,0 +1,5 @@
+*.tfrecords
+tensorboard/
+checkpoint/
+__pycache__/
+.vscode/
