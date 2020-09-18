@@ -34,7 +34,6 @@ TEST_IMAGE_DIR = r"D:\cifar-10-size-256\test"
 TRAIN_FILE_NAME= lambda num : 'cifar-10-train_{}.tfrecord'.format(num)
 TEST_FILE_NAME = lambda num : 'cifar-10-test_{}.tfrecord'.format(num)
 
-
 def _int64_feature(value):
   # if not isinstance(values, (tuple, list)):
   #   values = [values]
@@ -44,7 +43,7 @@ def _bytes_feature(value):
   """Returns a bytes_list from a string / byte."""
   if isinstance(value, type(tf.constant(0))):
     value = value.numpy() # BytesList won't unpack a string from an EagerTensor.
-  return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+  return tf.train.Feature(bytes_list=tf.train.BytesList(value=[tf.io.serialize_tensor(value).numpy()]))
 
 def serialize_ds(image, label):
   feature_description = {
@@ -62,6 +61,10 @@ Args:
 Returns:
   The new offset.
 """
+
+# 독립적으로 실행되는 모듈
+# Reference: https://www.kaggle.com/ryanholbrook/tfrecords-basics
+
 file_list= dg.unpickle(os.path.abspath(r'D:\cifar-10-batches-py'))
 
 train_labels, test_labels = dg.load_ds(file_list)

@@ -22,26 +22,26 @@ class mAlexNet(Model):
         self.LRN_INFO = LRN_INFO
         self.NUM_CLASSES = NUM_CLASSES
 
-        self.conv1 = tf.keras.layers.Conv2D(96, kernel_size=(11,11), 
-                                            strides=(4,4), padding="valid", 
+        self.conv1 = tf.keras.layers.Conv2D(96, kernel_size=(2,2), 
+                                            strides=(2,2), padding="valid", 
                                             activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(0))
-        self.conv2 = tf.keras.layers.Conv2D(96,kernel_size=(5,5), strides=(1,1), padding="same",
+        self.conv2 = tf.keras.layers.Conv2D(96,kernel_size=(2,2), strides=(1,1), padding="same",
                                             activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
-        self.conv3 = tf.keras.layers.Conv2D(256,kernel_size=(3,3), strides=(1,1), padding="same",
+        self.conv3 = tf.keras.layers.Conv2D(256,kernel_size=(2,2), strides=(1,1), padding="same",
                                             activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(0))
-        self.conv4 = tf.keras.layers.Conv2D(384,kernel_size=(3,3), strides=(1,1), padding="same",
+        self.conv4 = tf.keras.layers.Conv2D(384,kernel_size=(1,1), strides=(1,1), padding="same",
                                             activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
-        self.conv5 = tf.keras.layers.Conv2D(384,kernel_size=(3,3), strides=(1,1), padding="same",
+        self.conv5 = tf.keras.layers.Conv2D(384,kernel_size=(1,1), strides=(1,1), padding="same",
                                             activation='relu',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
         
-        self.pool1 = tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid")
-        self.pool2 = tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid")
-        self.pool3 = tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid")
+        self.pool1 = tf.keras.layers.MaxPool2D(pool_size=(2,2), strides=(1,1), padding="valid")
+        self.pool2 = tf.keras.layers.MaxPool2D(pool_size=(2,2), strides=(1,1), padding="valid")
+        self.pool3 = tf.keras.layers.MaxPool2D(pool_size=(2,2), strides=(1,1), padding="valid")
 
         self.flatten = tf.keras.layers.Flatten()
-        self.fc1 = tf.keras.layers.Dense(4096,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.fc1 = tf.keras.layers.Dense(1024,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
         self.dropout2 = tf.keras.layers.Dropout(0.5)
-        self.fc2 = tf.keras.layers.Dense(4096,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.fc2 = tf.keras.layers.Dense(1024,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
         self.dropout1 = tf.keras.layers.Dropout(0.5)
         self.fc3 = tf.keras.layers.Dense(self.NUM_CLASSES, activation='softmax',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
 
@@ -83,7 +83,6 @@ class mAlexNet(Model):
             fcl2 = self.fc2(do1)
             do2 = self.dropout2(fcl2)
             
-
             return self.fc3(do2)
 
         else:   # test model
@@ -115,4 +114,5 @@ class mAlexNet(Model):
             ft = self.flatten(mp3)
             fcl1 = self.fc1(ft)
             fcl2 = self.fc2(fcl1)
+
             return self.fc3(fcl2 / 2.0 )

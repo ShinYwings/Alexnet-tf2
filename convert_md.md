@@ -1,19 +1,25 @@
+
 ```python
-loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
-optimizer = tf.keras.optimizers.SGD(learning_rate=0.01,
-                                     momentum=0.9,
-                                        nesterov=False)
 
-with tf.device('/gpu:1'):
-    @tf.function
+    optimizer = AlexSGD(learning_rate, momentum, weight_decay)
+    accuracy = CategoricalAccuracy()
+
     def train_step(images, labels):
-        with tf.GradientTape() as tape:
-            predictions = model(images, lrn_info, NUM_CLASSES)
-            loss = loss_object(labels, predictions)
-        gradients = tape.gradient(loss, _model.trainable_variables)
-        optimizer.apply_gradients(zip(gradients, _model.trainable_variables))
 
-    for epoch in range(epochs=90):
-        for images, labels in train_ds:
-            train_step(images, labels)
+        with tf.GradientTape() as tape:
+            predictions = model(images, training=True)
+            losses_in_batch = SparseCategoricalCrossentropy(labels, predictions)
+
+        gradients = tape.gradient(losses_in_batch)
+        optimizer.apply_gradients(gradients)
+
+        Calculate_mean_loss(losses_in_batch)
+        accuracy.update(labels, predictions)
+
+    def test_step(images, labels):
+        predictions = model(images, training =False)
+        losses_in_batch = SparseCategoricalCrossentropy(labels, predictions)
+        
+        Calculate_test_mean_loss(losses_in_batch)
+        accuracy.update(labels, predictions)
 ```

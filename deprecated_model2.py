@@ -2,7 +2,9 @@ import tensorflow as tf
 from tensorflow.keras import Model
 import tensorflow.keras
 
-class mAlexNet(Model):
+# test model 인데 model 에 합병됨
+
+class tAlexNet(Model):
     def __init__(self, INPUT_SHAPE, LRN_INFO, NUM_CLASSES):
 
         """ 
@@ -17,20 +19,20 @@ class mAlexNet(Model):
         """
 
         # data_format='channels_first'
-        super(mAlexNet, self).__init__()
+        super(tAlexNet, self).__init__()
         self._INPUT_SHAPE = INPUT_SHAPE
         self.LRN_INFO = LRN_INFO
         self.NUM_CLASSES = NUM_CLASSES
         
         self.conv1 = tf.keras.layers.Conv2D(96, kernel_size=(40,40), 
                                             strides=(4,4), padding="valid", 
-                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(0))
+                                            activation='relu',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(0))
         self.conv2 = tf.keras.layers.Conv2D(96,kernel_size=(5,5), strides=(1,1), padding="same", 
-                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+                                            activation='relu',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
         self.conv3 = tf.keras.layers.Conv2D(256,kernel_size=(3,3), strides=(1,1), padding="same",
-                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(0))
+                                            activation='relu',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(0))
         self.conv4 = tf.keras.layers.Conv2D(384,kernel_size=(3,3), strides=(1,1), padding="same",
-                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+                                            activation='relu',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
         self.conv5 = tf.keras.layers.Conv2D(384,kernel_size=(3,3), strides=(1,1), padding="same",
                                             activation='relu',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
         
@@ -39,10 +41,8 @@ class mAlexNet(Model):
         self.pool3 = tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid")
 
         self.flatten = tf.keras.layers.Flatten()
-        self.fc1 = tf.keras.layers.Dense(4096,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
-        self.dropout2 = tf.keras.layers.Dropout(0.5)
-        self.fc2 = tf.keras.layers.Dense(4096,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
-        self.dropout1 = tf.keras.layers.Dropout(0.5)
+        self.fc1 = tf.keras.layers.Dense(4096,activation='relu',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.fc2 = tf.keras.layers.Dense(4096,activation='relu',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
         self.fc3 = tf.keras.layers.Dense(self.NUM_CLASSES, activation='softmax',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
 
     def call(self, x):
@@ -76,9 +76,7 @@ class mAlexNet(Model):
         # fc layers
         x = self.flatten(x)
         x = self.fc1(x)
-        x = self.dropout1(x)
         x = self.fc2(x)
-        x = self.dropout2(x)
-        x = self.fc3(x)
+        x = self.fc3(x/2)
 
         return x

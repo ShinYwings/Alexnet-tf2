@@ -7,225 +7,178 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.training import training_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.keras import backend_config
+from tensorflow.python.keras import backend as K
+import numpy as np
+import tensorflow as tf
 
+class lr_func(tf.keras.optimizers.schedules.LearningRateSchedule):
 
-@keras_export("keras.optimizers.SGD")
-class SGD(optimizer_v2.OptimizerV2):
-  r"""Gradient descent (with momentum) optimizer.
-  Update rule for parameter `w` with gradient `g` when `momentum` is 0:
-  ```python
-  w = w - learning_rate * g
-  ```
-  Update rule when `momentum` is larger than 0:
-  ```python
-  velocity = momentum * velocity - learning_rate * g
-  w = w * velocity
-  ```
-  When `nesterov=False`, this rule becomes:
-  ```python
-  velocity = momentum * velocity - learning_rate * g
-  w = w + momentum * velocity - learning_rate * g
-  ```
-  Args:
-    learning_rate: A `Tensor`, floating point value, or a schedule that is a
-      `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
-      that takes no arguments and returns the actual value to use. The
-      learning rate. Defaults to 0.01.
-    momentum: float hyperparameter >= 0 that accelerates gradient descent
-      in the relevant
-      direction and dampens oscillations. Defaults to 0, i.e., vanilla gradient
-      descent.
-    nesterov: boolean. Whether to apply Nesterov momentum.
-      Defaults to `False`.
-    name: Optional name prefix for the operations created when applying
-      gradients.  Defaults to `"SGD"`.
-    **kwargs: Keyword arguments. Allowed to be one of
-      `"clipnorm"` or `"clipvalue"`.
-      `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
-      gradients by value.
-  Usage:
-  >>> opt = tf.keras.optimizers.SGD(learning_rate=0.1)
-  >>> var = tf.Variable(1.0)
-  >>> loss = lambda: (var ** 2)/2.0         # d(loss)/d(var1) = var1
-  >>> step_count = opt.minimize(loss, [var]).numpy()
-  >>> # Step is `- learning_rate * grad`
-  >>> var.numpy()
-  0.9
-  >>> opt = tf.keras.optimizers.SGD(learning_rate=0.1, momentum=0.9)
-  >>> var = tf.Variable(1.0)
-  >>> val0 = var.value()
-  >>> loss = lambda: (var ** 2)/2.0         # d(loss)/d(var1) = var1
-  >>> # First step is `- learning_rate * grad`
-  >>> step_count = opt.minimize(loss, [var]).numpy()
-  >>> val1 = var.value()
-  >>> (val0 - val1).numpy()
-  0.1
-  >>> # On later steps, step-size increases because of momentum
-  >>> step_count = opt.minimize(loss, [var]).numpy()
-  >>> val2 = var.value()
-  >>> (val1 - val2).numpy()
-  0.18
-  Reference:
-      - For `nesterov=True`, See [Sutskever et al., 2013](
-        http://jmlr.org/proceedings/papers/v28/sutskever13.pdf).
-  """
+    def __init__(self, learning_rate = "learning_rate", name=None):
+        super(lr_func, self).__init__()
+        
+        self.init_lr = learning_rate
 
-  _HAS_AGGREGATE_GRAD = True
+    def __call__(self, step):
 
-  def __init__(self,
-               learning_rate=0.01,
-               weight_decay=0.0005,
-               momentum=0.0,
-               nesterov=False,
-               name="SGD",
-               **kwargs):
-    super(SGD, self).__init__(name, **kwargs)
-    self._set_hyper("learning_rate", kwargs.get("lr", learning_rate))
-    self._set_hyper("decay", self._initial_decay)
+        global_step_float = tf.cast(step, tf.float32)
+        
+        # 종료전 3배 감소
+        if global_step_float is 127:
+        
+            return tf.divide(self.init_lr, 3.0)
+        
+        return self.init_lr
 
-    self._weight_decay = False
-    if isinstance(weight_decay, ops.Tensor) or callable(weight_decay) or weight_decay > 0:
-      self._weight_decay = True
-    if isinstance(momentum, (int, float)) and (momentum < 0 or momentum > 1):
-      raise ValueError("`weight_decay` must be between [0, 1].")
-    self._set_hyper("weight_decay", weight_decay)
+    def get_config(self):
+        return {
+            'ini_lr' : self.init_lr,
+            'prev_loss' : self.prev_loss,
+            'loss' : self.loss,
+            'name' : self.name,
+        }
 
-    self._momentum = False
-    if isinstance(momentum, ops.Tensor) or callable(momentum) or momentum > 0:
-      self._momentum = True
-    if isinstance(momentum, (int, float)) and (momentum < 0 or momentum > 1):
-      raise ValueError("`momentum` must be between [0, 1].")
-    self._set_hyper("momentum", momentum)
+class AlexSGD(optimizer_v2.OptimizerV2):
 
-    self.nesterov = nesterov
-
-  def _create_slots(self, var_list):
-    if self._momentum:
-      for var in var_list:
-        self.add_slot(var, "momentum")
-
-    if self._weight_decay:
-      for var in var_list:
-        self.add_slot(var, "weight_decay")
-
-  def _prepare_local(self, var_device, var_dtype, apply_state):
-    super(SGD, self)._prepare_local(var_device, var_dtype, apply_state)
-    apply_state[(var_device, var_dtype)]["momentum"] = array_ops.identity(
-        self._get_hyper("momentum", var_dtype))
-    apply_state[(var_device, var_dtype)]["weight_decay"] = array_ops.identity(
-        self._get_hyper("weight_decay", var_dtype))
-
-  def _resource_apply_dense(self, grad, var, apply_state=None):
-    var_device, var_dtype = var.device, var.dtype.base_dtype
-    coefficients = ((apply_state or {}).get((var_device, var_dtype))
-                    or self._fallback_apply_state(var_device, var_dtype))
-
-    if self._momentum:
-      momentum_var = self.get_slot(var, "momentum")
-      return training_ops.resource_apply_keras_momentum(
-          var.handle,
-          momentum_var.handle,
-          coefficients["lr_t"],
-          grad,
-          coefficients["momentum"],
-          use_locking=self._use_locking,
-          use_nesterov=self.nesterov)
-    else:
-      return training_ops.resource_apply_gradient_descent(
-          var.handle, coefficients["lr_t"], grad, use_locking=self._use_locking)
-
-  def _resource_apply_sparse_duplicate_indices(self, grad, var, indices,
-                                               **kwargs):
-    if self._momentum:
-      return super(SGD, self)._resource_apply_sparse_duplicate_indices(
-          grad, var, indices, **kwargs)
-    else:
-      var_device, var_dtype = var.device, var.dtype.base_dtype
-      coefficients = (kwargs.get("apply_state", {}).get((var_device, var_dtype))
-                      or self._fallback_apply_state(var_device, var_dtype))
-
-      return resource_variable_ops.resource_scatter_add(
-          var.handle, indices, -grad * coefficients["lr_t"])
-
-  def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
-    # This method is only needed for momentum optimization.
-    var_device, var_dtype = var.device, var.dtype.base_dtype
-    coefficients = ((apply_state or {}).get((var_device, var_dtype))
-                    or self._fallback_apply_state(var_device, var_dtype))
-
-    momentum_var = self.get_slot(var, "momentum")
-    return training_ops.resource_sparse_apply_keras_momentum(
-        var.handle,
-        momentum_var.handle,
-        coefficients["lr_t"],
-        grad,
-        indices,
-        coefficients["momentum"],
-        use_locking=self._use_locking,
-        use_nesterov=self.nesterov)
-
-  def get_config(self):
-    config = super(SGD, self).get_config()
-    config.update({
-        "learning_rate": self._serialize_hyperparameter("learning_rate"),
-        "decay": self._serialize_hyperparameter("decay"),
-        "momentum": self._serialize_hyperparameter("momentum"),
-        "nesterov": self.nesterov,
-    })
-    return config
-
-# # [Reference] https://www.kdnuggets.com/2018/01/custom-optimizer-tensorflow.html
-
-# from tensorflow.python.ops import control_flow_ops
-# from tensorflow.python.ops import math_ops
-# from tensorflow.python.ops import state_ops
-# from tensorflow.python.framework import ops
-# from tensorflow.python.training import optimizer
-# import tensorflow as tf
-
-# class AlexOptimizer(optimizer.Optimizer):
+    _HAS_AGGREGATE_GRAD = True
     
-#     def __init__(self, learning_rate="learning_rate",alpha="alpha",beta="beta", weight_decay="weight_decay", use_locking=False, name="AlexOptimizer"):
-#         super(AlexOptimizer, self).__init__(use_locking, name)
-#         self._lr = learning_rate
-#         self._wd = weight_decay
-#         self._alpha = alpha
-#         self._beta = beta
+    def __init__(self,
+                learning_rate="learning_rate",
+                momentum=0.9,
+                weight_decay=0.0005,
+                name="AlexSGD",
+                **kwargs):
+                
+        super(AlexSGD, self).__init__(name, **kwargs)
+        self._set_hyper("learning_rate", kwargs.get("lr", learning_rate))
+        self._set_hyper("decay", self._initial_decay)
+        self._is_first = True
+        # self._weight_decay = False
+        # if isinstance(weight_decay, ops.Tensor) or callable(weight_decay) or weight_decay > 0:
+        #   self._weight_decay = True
+        # if isinstance(weight_decay, (int, float)) and (weight_decay < 0 or weight_decay > 1):
+        #   raise ValueError("`weight_decay` must be between [0, 1].")
+        # self._set_hyper("weight_decay", kwargs.get("weight_decay", weight_decay))
+        self._momentum = False
+        if isinstance(momentum, ops.Tensor) or callable(momentum) or momentum > 0:
+          self._momentum = True
+        if isinstance(momentum, (int, float)) and (momentum < 0 or momentum > 1):
+          raise ValueError("`momentum` must be between [0, 1].")
+        self._set_hyper("momentum", kwargs.get("momentum", momentum))
+
+        # Tensor versions of the constructor arguments, created in _prepare().
+        self._weight_decay = weight_decay
+        # self._weight_decay_t = None
+        # self.v = K.variable(1 , name='v') # momentum_variable
+        # self._v = 1
+        # self._v_t = None
+        self._set_hyper("v", 1)
+    
+    @classmethod
+    def from_config(cls, config):
+        custom_objects = {'lr_func': lr_func}
+        return super().from_config(config, custom_objects=custom_objects)
+
+    def _create_slots(self, var_list):
+        if self._momentum:
+            for var in var_list:
+                self.add_slot(var, "momentum")
+        for var in var_list:
+            self.add_slot(var, 'v')
+
+    # def _prepare(self):
+        # self._weight_decay_t = ops.convert_to_tensor_v2(self._weight_decay, name="weight_decay")
+        # self._v_t = ops.convert_to_tensor_v2(self._v, name="v")
+
+    def _prepare_local(self, var_device, var_dtype, apply_state):
+        super(AlexSGD, self)._prepare_local(var_device, var_dtype, apply_state)
+        apply_state[(var_device, var_dtype)]["momentum"] = array_ops.identity(
+            self._get_hyper("momentum", var_dtype))
+        apply_state[(var_device, var_dtype)]["v"] = array_ops.identity(
+            self._get_hyper("v", var_dtype))
+        apply_state["weight_decay"] = tf.constant(self._weight_decay, name='alex_weight_decay')
+        # apply_state[(var_device, var_dtype)]["weight_decay"] = array_ops.identity(
+        #     self._get_hyper("weight_decay", var_dtype))
+    
+    def apply_gradients(self, grads_and_vars, name=None, experimental_aggregate_gradients=True):
+        # grads, tvars = list(zip(*grads_and_vars))
+        # (grads, _) = tf.clip_by_global_norm(grads, clip_norm=10)
+        return super(AlexSGD, self).apply_gradients(grads_and_vars, name=name, experimental_aggregate_gradients=experimental_aggregate_gradients)
+
+    def _resource_apply_dense(self, grad, var, apply_state=None):
+        var_device, var_dtype = var.device, var.dtype.base_dtype
+        coefficients = ((apply_state or {}).get((var_device, var_dtype))
+                        or self._fallback_apply_state(var_device, var_dtype))
+        momentum_var = self.get_slot(var, "momentum")
+        # weight_decay_var = self.weight_decay
+        lr_t = self._decayed_lr(var_dtype)
+        v = self.get_slot(var, "v")
         
-#         # Tensor versions of the constructor arguments, created in _prepare().
-#         self._lr_t = None
-#         self._wd_t = None
-#         self._alpha_t = None
-#         self._beta_t = None
-
-#     def _prepare(self):
-#         self._lr_t = ops.convert_to_tensor(self._lr, name="learning_rate")
-#         self._wd_t = ops.convert_to_tensor(self._wd, name="weight_decay")
-#         self._alpha_t = ops.convert_to_tensor(self._beta, name="alpha_t")
-#         self._beta_t = ops.convert_to_tensor(self._beta, name="beta_t")
-
-#     def _create_slots(self, var_list):
-#         # Create slots for the first and second moments.
-#         for v in var_list:
-#             self._zeros_slot(v, "m", self._name)
-
-#     def _apply_dense(self, grad, var):
-#         lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
-#         wd_t = math_ops.cast(self._wd_t, var.dtype.base_dtype)
-#         alpha_t = math_ops.cast(self._alpha_t, var.dtype.base_dtype)
-#         beta_t = math_ops.cast(self._beta_t, var.dtype.base_dtype)
-
-#         eps = 1e-7 #cap for moving average
+        weight_decay_var = math_ops.cast(self._weight_decay, var.dtype.base_dtype)
         
-#         m = self.get_slot(var, "m")
-#         m_t = m.assign(tf.maximum(beta_t * m + eps, tf.abs(grad)))
+        prev_var = var
+        # v_var = math_ops.cast(self._v_t, var.dtype.base_dtype)
+        # update rule
+        # v_(i+1) = momentum * v_i - 0.0005 * lr * w_i - lr * grad
+        # w_(i+1) = w_i + v_(i+1)
+        # w_i = var
+        # v_i = init 0
 
-#         var_update = state_ops.assign_sub(var, lr_t*grad*tf.exp( tf.log(alpha_t)*tf.sign(grad)*tf.sign(m_t))) #Update 'ref' by subtracting 'value
-#         #Create an op that groups multiple operations.
-#         #When this op finishes, all ops in input have finished
-#         return control_flow_ops.group(*[var_update, m_t])
+        if self._is_first:
+            self._is_first = False
+            # v = state_ops.assign(v , 1, use_locking=self._use_locking)
+            # v_var = state_ops.assign(v, 1)
 
-#     def _apply_sparse(self, grad, var):
-#         raise NotImplementedError("Sparse gradient updates are not supported.")
+            # print("vvar is",v_var)
+            left = math_ops.mul(momentum_var,v)
+            center_1 = math_ops.mul(weight_decay_var, lr_t)
+            center_2 = math_ops.mul(center_1, var)
+            right = math_ops.mul(lr_t, grad)
+            sub_1 = math_ops.subtract(left, center_2)
+            v_t = state_ops.assign(v, math_ops.subtract(sub_1, right), use_locking=self._use_locking)
+            var_update = state_ops.assign(var, var+v_t, use_locking=self._use_locking)
+            
+        else:
+            # TODO: 마지막 스텝때 lr = lr/3
+            # TODO : 마지막에 lr = lr/3  그리고 pv_var == var 일때 lr = learning_rate /10
+
+            left = math_ops.mul(momentum_var,v)
+            center_1 = math_ops.mul(weight_decay_var, lr_t)
+            center_2 = math_ops.mul(center_1, var)
+            right = math_ops.mul(lr_t, grad)
+            sub_1 = math_ops.subtract(left, center_2)
+            v_t = state_ops.assign(v, math_ops.subtract(sub_1, right) , use_locking=self._use_locking)
+            var_update = state_ops.assign(var, var+v_t, use_locking=self._use_locking)
+            tf.print("var_update is", var_update)
+        
+        # TODO 어떻게 loss랑 이전 loss가 같은지 확인하는 방법
+        # if var_update == var:
+        #     state_ops.assign(lr_t, tf.divide(lr_t,10))
+            # coefficients['learning_rate'] = lr_t/10
+
+        updates = [var_update, v_t]
+        print("var_update is",var_update)
+        tf.print("v_t is ", v_t)
+
+        return super(AlexSGD, self)._resource_apply_dense(grad, var)
+
+    def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
+    # This method is only needed for momentum optimization.
+      raise NotImplementedError
+
+    def get_config(self):
+      config = super(AlexSGD, self).get_config()
+      config.update({
+          "learning_rate": self._serialize_hyperparameter("learning_rate"),
+          "decay": self._serialize_hyperparameter("decay"),
+          "momentum": self._serialize_hyperparameter("momentum"),
+          "weight_decay": self._weight_decay_t,
+          "is_first": self._is_first,
+          "v": self._serialize_hyperparameter("v"),
+      })
+      return config

@@ -1,65 +1,148 @@
 import tensorflow as tf 
 import numpy as np
 import os
-import sys 
-import model_keras as model
-import test_model as tmodel
-# TODO change to data_Generator when TFrecord will be built in
-from deprecated_data_generator import unpickle
-from deprecated_data_generator import load_CIFAR10_data as load_data
-from deprecated_data_generator import load_CIFAR10_meta as load_meta
+import sys
+import model as model
 import time
-from datetime import datetime
+import data_augmentation as da
+from datetime import datetime as dt
 from matplotlib import pyplot as plt
+import optimizer_alexnet
+import cv2
+import multiprocessing
 
 # Hyper parameters
 # TODO : argparse?
 LEARNING_RATE = 0.01
 NUM_EPOCHS = 90
-NUM_CLASSES = 10    # CIFAR-10
+NUM_CLASSES = 1000    # IMAGENET 2012
 MOMENTUM = 0.9 # SGD + MOMENTUM
 BATCH_SIZE = 128
 DATASET_DIR = r"D:\cifar-10-batches-py"
-LRN_INFO = (5, 1e-4, 0.75, 2) # radius, alpha, beta, bias
-INPUT_IMAGE_SIZE = 256 #WIDTH, HEIGHT  #x를 224x224로 해보고 그다음에 227x227로 바꾸기
+TRAIN_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_train"
+TEST_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_val"
+LRN_INFO = (5, 1e-4, 0.75, 2) # radius, alpha, beta, bias   # hands-on 에서는 r=2 a = 0.00002, b = 0.75, k =1 이라고 되어있음...
+INPUT_IMAGE_SIZE = 227 #WIDTH, HEIGHT    # cropped by 256x256 images
 WEIGHT_DECAY = 5e-4
 # TODO optimizer (weight decay & lr/10 heuristic 방법) 추가
 
 # Fixed
+IMAGENET_MEAN = [122.10927936917298, 116.5416959998387, 102.61744377213829] # rgb format
 DROUPUT_PROP = 0.5
 ENCODING_STYLE = "utf-8"
-# How often we want to write the tf.summary data to disk
-DISPLAY_STEP = 20
+AUTO = tf.data.experimental.AUTOTUNE
+CPU_CORE = multiprocessing.cpu_count()
+def image_cropping(image , training = None):  # do it only in test time
+    
+    global INPUT_IMAGE_SIZE
 
-def get_run_logdir(root_logdir):
-    run_id = datetime.now().strftime("run_%Y_%m_%d-%H_%M_%S")
+    cropped_images = list()
+
+    with tf.device("/cpu:0"):
+
+        horizental_fliped_image = tf.image.flip_left_right(image)
+        
+        # if test_mode:
+        #     img = tf.image.resize(image, size=(227,227), method=tf.image.ResizeMethod.BILINEAR)
+        #     img2 = tf.image.resize(horizental_fliped_image, size=(227,227), method=tf.image.ResizeMethod.BILINEAR)
+            
+            # cropped_images.append(tf.image.convert_image_dtype(img, dtype=tf.float32) - IMAGENET_MEAN)
+            # cropped_images.append(tf.image.convert_image_dtype(img2, dtype=tf.float32) - IMAGENET_MEAN)         
+            # return cropped_images
+
+        if training:
+            ran_crop_image1 = tf.image.random_crop(image,size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
+            ran_crop_image2 = tf.image.random_crop(horizental_fliped_image, 
+                                        size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
+
+            _image1 = tf.image.convert_image_dtype(ran_crop_image1, dtype=tf.float32) - IMAGENET_MEAN
+            _image2 = tf.image.convert_image_dtype(ran_crop_image2, dtype=tf.float32) - IMAGENET_MEAN
+            cropped_images.append(_image1)
+            cropped_images.append(_image2)
+        else:
+            
+            # for original image
+            topleft = tf.image.convert_image_dtype(image[:227,:227], dtype=tf.float32) - IMAGENET_MEAN
+            topright = tf.image.convert_image_dtype(image[29:256,:227], dtype=tf.float32) - IMAGENET_MEAN
+            bottomleft = tf.image.convert_image_dtype(image[:227,29:256], dtype=tf.float32) - IMAGENET_MEAN
+            bottomright = tf.image.convert_image_dtype(image[29:256,29:256], dtype=tf.float32) - IMAGENET_MEAN
+            center = tf.image.convert_image_dtype(image[15:242, 15:242], dtype=tf.float32) - IMAGENET_MEAN
+
+            cropped_images.append(topleft)
+            cropped_images.append(topright)
+            cropped_images.append(bottomleft)
+            cropped_images.append(bottomright)
+            cropped_images.append(center)
+        
+            # for horizental_fliped_image
+            horizental_fliped_image_topleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,:227], dtype=tf.float32) - IMAGENET_MEAN
+            horizental_fliped_image_topright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,:227], dtype=tf.float32) - IMAGENET_MEAN
+            horizental_fliped_image_bottomleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,29:256], dtype=tf.float32) - IMAGENET_MEAN
+            horizental_fliped_image_bottomright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,29:256], dtype=tf.float32) - IMAGENET_MEAN
+            horizental_fliped_image_center = tf.image.convert_image_dtype(horizental_fliped_image[15:242, 15:242], dtype=tf.float32) - IMAGENET_MEAN
+
+            cropped_images.append(horizental_fliped_image_topleft)
+            cropped_images.append(horizental_fliped_image_topright)
+            cropped_images.append(horizental_fliped_image_bottomleft)
+            cropped_images.append(horizental_fliped_image_bottomright)
+            cropped_images.append(horizental_fliped_image_center)
+
+    return cropped_images
+
+def get_logdir(root_logdir):
+    run_id = dt.now().strftime("run_%Y_%m_%d-%H_%M_%S")
     
     return os.path.join(root_logdir, run_id)
 
-def preprocess_images(ds):
-    print("image resizing...")
-
-    global INPUT_IMAGE_SIZE
-    refined_ds = list()
-
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
-        try:
-            tf.config.experimental.set_memory_growth(gpus[0], True)
-            with tf.device("/gpu:1"):
-        
-                for image, label in ds:
-                    """N(0,1)로 norm ( 정확히는 norm은 아닌데 0~255로 fix되어 있으니까 norm이라 봐도 무방"""    
-                    image = tf.image.per_image_standardization(image)
-                    """resize images from 32X32 to INPUT_IMAGE_SIZE x INPUT_IMAGE_SIZE (alexnet standard)"""
-                    image2 = tf.image.resize(image, (INPUT_IMAGE_SIZE,INPUT_IMAGE_SIZE))
-                    refined_ds.append((image2, label))
-        
-        except RuntimeError as e:
-            # 프로그램 시작시에 메모리 증가가 설정되어야만 합니다
-            print(e)
     
-    return refined_ds
+def decode_image(image_data):
+    image = tf.image.decode_jpeg(image_data, channels=3)
+    image = tf.image.convert_image_dtype(image, tf.float32) - IMAGENET_MEAN # convert image to floats in [0, 1] range
+    # image = tf.reshape(image, [*IMAGE_SIZE, 3]) # explicit size needed for TPU
+    return image
+
+def _parse_function(example_proto):
+    # Parse the input `tf.train.Example` proto using the dictionary above.
+    feature_description = {
+        'image': tf.io.FixedLenFeature([], tf.string),
+        'label': tf.io.FixedLenFeature([], tf.int64),
+    }
+    example = tf.io.parse_single_example(example_proto, feature_description)
+
+    return example
+
+# def _parse_function(example_proto):
+    # # Parse the input `tf.train.Example` proto using the dictionary above.
+    # feature_description = {
+    #     'image': tf.io.FixedLenFeature([], tf.string),
+    #     'label': tf.io.FixedLenFeature([], tf.int64),
+    # }
+    # example = tf.io.parse_single_example(example_proto, feature_description)
+    # # a= np.array(, dtype=np.float32)
+    
+    # labels = example['label']
+    
+    # print("labels",labels)
+
+    # raw_imgs= example['image']
+
+    # a = list()
+    # for j in range(len(raw_imgs)):
+    #     raw_images = tf.io.decode_jpeg(raw_imgs[j], channels=3)
+    #     a.append(raw_images)
+    # # cropped_image = tf.image.resize(raw_images, (227, 227,3))
+    # # raw_images = tf.image.decode_jpeg(example['image'].numpy(), channels=3)
+    
+    # b = list()
+    # for i in a:
+    #     print(i)
+    #     cropped_image = tf.image.resize(i, [227,227], method= tf.image.ResizeMethod.BILINEAR)
+    #     b.append(cropped_image)
+    # print("images",b)
+    # images = np.array(b, dtype=np.float32) / 255.0
+    # print("images",images)
+    
+    # return (images, labels)
 
 if __name__ == "__main__":
 
@@ -78,44 +161,44 @@ if __name__ == "__main__":
 
     if not os.path.isdir(filewriter_path):
         os.mkdir(filewriter_path)
-
-    cifar_datasets = unpickle(dataset_dir)
-
-    batch_size, class_names = load_meta(cifar_datasets[0])  # dataset의 첫번째 파일이 metadata 
-
-    """[metadata, 5 * training batches, test batch]"""
     
-    (train_images, train_labels), (test_images, test_labels) = load_data(file_list=cifar_datasets)
-    # TODO INPUT_IMAGE_SIZE는 DATA augmentation 구현되면 삭제
-    # TODO DATA augmentation은 tf에 dataset 적재하기 전에 실행
+    train_tfrecord_list = list()
+    test_tfrecord_list = list()
+
+    train_dirs = os.listdir(TRAIN_TFRECORD_DIR)
+    test_dirs = os.listdir(TEST_TFRECORD_DIR)
     
-    # validation_images, validation_labels = train_images[:5000], train_labels[:5000]
-    # train_images, train_labels = train_images[5000:], train_labels[5000:]
+    for train_dir in train_dirs:
+        dir_path = os.path.join(TRAIN_TFRECORD_DIR, train_dir)
+        a =tf.data.Dataset.list_files(os.path.join(dir_path, '*.tfrecord'))
+        train_tfrecord_list.extend(a)
     
-    """
-        여기서 data augmentation 2개 해야함. cropping & rgb intensity
-    """
+    for test_dir in test_dirs:
+        dir_path = os.path.join(TEST_TFRECORD_DIR, test_dir)
+        b = tf.data.Dataset.list_files(os.path.join(dir_path, '*.tfrecord'))
+        test_tfrecord_list.extend(b)
 
-    """
-        [from_tensors VS from_tensor_slices]
-        from_tensors combines the input and returns a dataset with a single element:
-
-        t = tf.constant([[1, 2], [3, 4]])
-        ds = tf.data.Dataset.from_tensors(t)   # [[1, 2], [3, 4]]
-        from_tensor_slices creates a dataset with a separate element for each row of the input tensor:
-
-        t = tf.constant([[1, 2], [3, 4]])
-        ds = tf.data.Dataset.from_tensor_slices(t)   # [1, 2], [3, 4]
-    """
-    print("여봐라")
-    train_ds = tf.data.Dataset.from_tensor_slices((train_images[:500], train_labels[:500]))
-    train_ds_size = tf.data.experimental.cardinality(train_ds).numpy()
-    train_ds = train_ds.shuffle(buffer_size=train_ds_size).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(1)
-
-    test_ds = tf.data.Dataset.from_tensor_slices((test_images[:500], test_labels[:500]))    
-    test_ds_size = tf.data.experimental.cardinality(test_ds).numpy()
-    test_ds = test_ds.shuffle(buffer_size=test_ds_size).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(1)
-    print("여봐라2")
+    train_buf_size = len(train_tfrecord_list)
+    test_buf_size= len(test_tfrecord_list)
+    
+    train_ds = tf.data.TFRecordDataset(train_tfrecord_list, num_parallel_reads=AUTO)
+    test_ds = tf.data.TFRecordDataset(test_tfrecord_list, num_parallel_reads=AUTO)
+    train_ds = train_ds.map(_parse_function)
+    test_ds = test_ds.map(_parse_function)
+    train_ds = train_ds.shuffle(buffer_size=train_buf_size).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
+    test_ds = test_ds.shuffle(buffer_size=test_buf_size).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
+    
+    print(train_ds.take(1))
+    for i in train_ds.take(1):
+        print(i)
+    # raw_dataset_train = tf.data.TFRecordDataset(train_tfrecord_list, num_parallel_reads=AUTO)
+    # raw_dataset_test = tf.data.TFRecordDataset(test_tfrecord_list, num_parallel_reads=AUTO)
+    # train_ds = raw_dataset_train.map(_parse_function)
+    # test_ds = raw_dataset_test.map(_parse_function)
+    # train_ds = train_ds.shuffle(buffer_size=10000).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
+    # test_ds = test_ds.shuffle(buffer_size=2000).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
+    # m_train_ds = iter(train_ds)
+    # m_test_ds = iter(test_ds)
     """
     Input Pipeline
     
@@ -138,23 +221,6 @@ if __name__ == "__main__":
                  훈련 알고리즘이 한 배치로 작업을 하는 동안 이 데이터셋이 동시에 다음 배치를 준비
                  합니다. (디스크에서 데이터를 읽고 전처리)
     """
-    
-    # val_ds_size = tf.data.experimental.cardinality(val_ds).numpy()
-    # print("Training data size: ", train_ds_size)
-    # print("Test data size: ", test_ds_size)
-    # print("Val data size: ", val_ds_size)
-
-    # with tf.device('/gpu:1'):
-    #     resize_and_rescale = tf.keras.Sequential([
-    #                 tf.keras.layers.experimental.preprocessing.Resizing(INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE),
-    #                 tf.keras.layers.experimental.preprocessing.Rescaling(1./255)
-    #             ])
-    # Data Preprocessing STRATEGY 
-    # map(train_ds, num_parallel_calls=tf.data.experimental.AUTOTUNE, deterministic=False)
-    
-    # val_ds = (val_ds.map(preprocess_images, num_parallel_calls=5)
-    #                         .shuffle(buffer_size=val_ds_size)
-    #                         .batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(1))
 
     """check images are all right""" 
     
@@ -167,10 +233,12 @@ if __name__ == "__main__":
     # plt.show()
 
     _model = model.mAlexNet(INPUT_IMAGE_SIZE, LRN_INFO, NUM_CLASSES)
-    test_model = tmodel.mAlexNet(INPUT_IMAGE_SIZE, LRN_INFO, NUM_CLASSES)
     loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
-    optimizer = tf.keras.optimizers.SGD(learning_rate=LEARNING_RATE, momentum=MOMENTUM, nesterov=False)
-    
+
+    # TODO custom optimizer로 바꿔주기
+    # _optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
+    _optimizer = optimizer_alexnet.AlexSGD(learning_rate=LEARNING_RATE, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
+    # _optimizer = tf.keras.optimizers.AlexSGD(learning_rate=LEARNING_RATE, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
     # 모델의 손실과 성능을 측정할 지표, 에포크가 진행되는 동안 수집된 측정 지표를 바탕으로 결과 출력
     train_loss = tf.keras.metrics.Mean(name= 'train_loss', dtype=tf.float32)
     train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
@@ -186,13 +254,13 @@ if __name__ == "__main__":
         - validation loss
         - validation accuracy
 
-    get_run_logdir: return the location of the exact directory that is named
+    get_logdir: return the location of the exact directory that is named
                     according to the current time the training phase starts
     """
 
     root_logdir = os.path.join(filewriter_path, "logs\\fit\\")
 
-    run_logdir = get_run_logdir(root_logdir)
+    logdir = get_logdir(root_logdir)
 
     """
     Training and Results
@@ -205,66 +273,116 @@ if __name__ == "__main__":
         - Learning Rate
     """
 
-    summary_writer = tf.summary.create_file_writer(run_logdir)
+    summary_writer = tf.summary.create_file_writer(logdir)
+    tf.summary.trace_on(graph=True, profiler=True)
     
-    print('tensorboard --logdir={}'.format(run_logdir))
+    print('tensorboard --logdir={}'.format(logdir))
+
+    # _model.compile(optimizer=_optimizer, loss= loss_object, metrics=train_loss)
+    # _model.fit(m_train_ds, epochs=NUM_EPOCHS, steps_per_epoch=20,
+    #             batch_size=BATCH_SIZE, validation_batch_size=BATCH_SIZE, validation_data=m_test_ds)
+    # _model.summary()
 
     with tf.device('/gpu:1'):
         @tf.function
-        def train_step(images, labels):
-            with tf.GradientTape() as tape:
-                predictions = _model(images)
-                loss = loss_object(labels, predictions)
-            gradients = tape.gradient(loss, _model.trainable_variables)
-            optimizer.apply_gradients(zip(gradients, _model.trainable_variables))
+        def train_step(train_model, images, labels):
 
+            with tf.GradientTape() as tape:
+
+                predictions = train_model.call(images, training=True)
+                loss = loss_object(labels, predictions)
+
+            gradients = tape.gradient(loss, train_model.trainable_variables)
+            #apply gradients 가 v1의 minimize를 대체함
+            _optimizer.apply_gradients(zip(gradients, train_model.trainable_variables))
+            
             train_loss(loss)
             train_accuracy(labels, predictions)
+            # train_accuracy.update_state(labels, predictions)
 
         @tf.function
-        def test_step(images, labels):
-            predictions = test_model(images)
+        def test_step(test_model, images, labels):
+            predictions = test_model.call(images, training =False)
             t_loss = loss_object(labels, predictions)
             test_loss(t_loss)
             test_accuracy(labels, predictions)
+            # test_accuracy.update_state(labels, predictions)
+    
+    # p = multiprocessing.Pool(CPU_CORE)
 
     print("시작")
     for epoch in range(NUM_EPOCHS):
         start = time.perf_counter()
+        for step, tb in enumerate(train_ds):
+            
+            raw_images= tb['image']
+            raw_labels= tb['label']
+            
+            images = list()
+            labels = list()
 
-        for images, labels in train_ds:
-            print("images size", np.shape(images))
-            print("images:",images)
-            plt.imshow(images)
-            plt.show()
-            train_step(images, labels)
+            for i in range(0,BATCH_SIZE):
+                image = tf.image.decode_jpeg(raw_images[i], channels=3)
+
+                # cropped_image= p.starmap(image_cropping, [(image, True)])
+                with tf.device('/cpu:0'):
+                    cropped_image = image_cropping(image, training=True)
+                    for j in cropped_image:
+                        images.append(j)
+                        labels.append(raw_labels[i])
+
+            images = tf.stack(images)
+            labels = tf.stack(labels)
+            
+            train_step(_model, images, labels)
+            # print("Training Epoch:", epoch+1, " Training Step:",step)
         with summary_writer.as_default():
             tf.summary.scalar('train_loss', train_loss.result(), step=epoch+1)
             tf.summary.scalar('train_accuracy', train_accuracy.result(), step=epoch+1)
+            tf.summary.scalar('learning_rate', _optimizer._decayed_lr(tf.float32), step=step)
+            
+        for step, tc in enumerate(test_ds):
+            raw_images= tc['image']
+            raw_labels= tc['label']
+            
+            images = list()
+            labels = list()
+            for i in range(0,BATCH_SIZE):
+                image = tf.image.decode_jpeg(raw_images[i], channels=3)
 
-        for test_images, test_labels in test_ds:
-            test_step(test_images, test_labels)
+                # intend_image = p.starmap(da.intensity_RGB, [(image)])
+                # cropped_image= p.starmap(image_cropping, [(image, False)])
+                # cropped_intend_image= p.starmap(image_cropping, [(intend_image, False)])
+
+                with tf.device('/cpu:0'):
+                    intend_image = da.intensity_RGB(image=image)   # test때만 적용
+                    cropped_image = image_cropping(image, training=False)
+                    cropped_intend_image = image_cropping(intend_image, training=False)
+
+                    for j in cropped_image:
+                        images.append(j)
+                        labels.append(raw_labels[i])
+                    for j in cropped_intend_image:
+                        images.append(j)
+                        labels.append(raw_labels[i])
+                
+            images = tf.stack(images)
+            labels = tf.stack(labels)
+            
+            test_step(_model, images, labels)
+            # print("Testing Epoch:", epoch+1, " Testing Step:",step)
         with summary_writer.as_default():
             tf.summary.scalar('test_loss', test_loss.result(), step=epoch+1)
             tf.summary.scalar('test_accuracy', test_accuracy.result(), step=epoch+1)
-
-        tf.print('에포크: {}, 손실: {}, 정확도: {}, 테스트 손실: {}, 테스트 정확도: {}'.format(epoch+1,train_loss.result(),
+            
+        print('에포크: {}, 손실: {}, 정확도: {}, 테스트 손실: {}, 테스트 정확도: {}'.format(epoch+1,train_loss.result(),
                             train_accuracy.result()*100, test_loss.result(),test_accuracy.result()*100))
         
-        tf.print("Epoch {} 의 총 소요시간: {}".format(epoch+1, time.perf_counter() - start))
+        print("Epoch {} 의 총 소요시간: {}".format(epoch+1, time.perf_counter() - start))
+
         train_loss.reset_states()
         test_loss.reset_states()
         train_accuracy.reset_states()
         test_accuracy.reset_states()
+        
     print("끝")
-    # _iterator = iter(train_ds)
-
-    # batch = _iterator.get_next()
-
-    # nesterov: SGD momentum은 현재 그래디언트에다가 모멘텀을 곱한 가중치를 더한 가중치를 다음 가중치를 업데이트를 해줌 
-    # 반면, nesterov는 
-    # sgd = tf.optimizers.SGD(learning_rate=LEARNING_RATE, momentum=MOMENTUM, nesterov=False)
-    # train(alexnet, optimizer= sgd, dataset_train=train_ds, dataset_val=val_ds, epochs=NUM_EPOCHS)
-    # model.compile(optimizer=sgd, loss=loss_fn)
-    # model.fit(dataset)
-    # keras.Model.fit(dataset)

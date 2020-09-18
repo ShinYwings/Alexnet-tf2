@@ -3,6 +3,8 @@ import cv2
 import os
 import numpy as np
 
+# 사실은 api에 있다고 한다.. ㅠ tf.image.resize
+
 class resize_images():
 
     def __init__(self):

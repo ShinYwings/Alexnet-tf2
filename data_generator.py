@@ -4,6 +4,8 @@ import os
 import matplotlib.pyplot as plt
 import cv2
 
+# TFRecord를 사용함에 따라 필요가 없어짐.
+
 def unpickle(dir):
     
     import pickle as pk

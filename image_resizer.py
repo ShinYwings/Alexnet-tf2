@@ -6,6 +6,8 @@ import Enlarge_Images as ei
 import matplotlib.pyplot as plt
 import numpy as np
 
+# 독립적으로 움직이는 모듈
+
 DATASET_DIR = r"D:\cifar-10-batches-py"
 dataset_dir=os.path.abspath(DATASET_DIR)
 
