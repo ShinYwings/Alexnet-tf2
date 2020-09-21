@@ -17,7 +17,7 @@ class lr_func(tf.keras.optimizers.schedules.LearningRateSchedule):
             learning_rate = 0.1
 
         # 종료전 3배 감소
-        elif step is 127:
+        elif step is 128:
 
             return tf.divide(learning_rate, 3.0)
         
@@ -26,7 +26,7 @@ class lr_func(tf.keras.optimizers.schedules.LearningRateSchedule):
             return tf.divide(learning_rate, 10.0)
         
         return learning_rate
-        return super().__call__(step)
+        # return super().__call__(step)
 
     def from_config(cls, config):
         return super().from_config(config)

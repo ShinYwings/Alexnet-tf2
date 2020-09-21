@@ -18,9 +18,16 @@ NUM_EPOCHS = 90
 NUM_CLASSES = 1000    # IMAGENET 2012
 MOMENTUM = 0.9 # SGD + MOMENTUM
 BATCH_SIZE = 128
-DATASET_DIR = r"D:\cifar-10-batches-py"
-TRAIN_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_train"
-TEST_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_val"
+
+DATASET_DIR = r"D:\ILSVRC2012"
+
+TRAIN_TFRECORD_DIR = r"D:\ILSVRC2012\ILSVRC2012_tfrecord_train"
+TEST_TFRECORD_DIR = r"D:\ILSVRC2012\ILSVRC2012_tfrecord_val"
+
+# 함수 실험용
+SAMPLE_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_train"
+SAMPLE_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_val"
+
 LRN_INFO = (5, 1e-4, 0.75, 2) # radius, alpha, beta, bias   # hands-on 에서는 r=2 a = 0.00002, b = 0.75, k =1 이라고 되어있음...
 INPUT_IMAGE_SIZE = 227 #WIDTH, HEIGHT    # cropped by 256x256 images
 WEIGHT_DECAY = 5e-4
@@ -38,54 +45,52 @@ def image_cropping(image , training = None):  # do it only in test time
 
     cropped_images = list()
 
-    with tf.device("/cpu:0"):
-
-        horizental_fliped_image = tf.image.flip_left_right(image)
+    horizental_fliped_image = tf.image.flip_left_right(image)
+    
+    # if test_mode:
+    #     img = tf.image.resize(image, size=(227,227), method=tf.image.ResizeMethod.BILINEAR)
+    #     img2 = tf.image.resize(horizental_fliped_image, size=(227,227), method=tf.image.ResizeMethod.BILINEAR)
         
-        # if test_mode:
-        #     img = tf.image.resize(image, size=(227,227), method=tf.image.ResizeMethod.BILINEAR)
-        #     img2 = tf.image.resize(horizental_fliped_image, size=(227,227), method=tf.image.ResizeMethod.BILINEAR)
-            
-            # cropped_images.append(tf.image.convert_image_dtype(img, dtype=tf.float32) - IMAGENET_MEAN)
-            # cropped_images.append(tf.image.convert_image_dtype(img2, dtype=tf.float32) - IMAGENET_MEAN)         
-            # return cropped_images
+        # cropped_images.append(tf.image.convert_image_dtype(img, dtype=tf.float32) - IMAGENET_MEAN)
+        # cropped_images.append(tf.image.convert_image_dtype(img2, dtype=tf.float32) - IMAGENET_MEAN)         
+        # return cropped_images
 
-        if training:
-            ran_crop_image1 = tf.image.random_crop(image,size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
-            ran_crop_image2 = tf.image.random_crop(horizental_fliped_image, 
-                                        size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
+    if training:
+        ran_crop_image1 = tf.image.random_crop(image,size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
+        ran_crop_image2 = tf.image.random_crop(horizental_fliped_image, 
+                                    size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
 
-            _image1 = tf.image.convert_image_dtype(ran_crop_image1, dtype=tf.float32) - IMAGENET_MEAN
-            _image2 = tf.image.convert_image_dtype(ran_crop_image2, dtype=tf.float32) - IMAGENET_MEAN
-            cropped_images.append(_image1)
-            cropped_images.append(_image2)
-        else:
-            
-            # for original image
-            topleft = tf.image.convert_image_dtype(image[:227,:227], dtype=tf.float32) - IMAGENET_MEAN
-            topright = tf.image.convert_image_dtype(image[29:256,:227], dtype=tf.float32) - IMAGENET_MEAN
-            bottomleft = tf.image.convert_image_dtype(image[:227,29:256], dtype=tf.float32) - IMAGENET_MEAN
-            bottomright = tf.image.convert_image_dtype(image[29:256,29:256], dtype=tf.float32) - IMAGENET_MEAN
-            center = tf.image.convert_image_dtype(image[15:242, 15:242], dtype=tf.float32) - IMAGENET_MEAN
-
-            cropped_images.append(topleft)
-            cropped_images.append(topright)
-            cropped_images.append(bottomleft)
-            cropped_images.append(bottomright)
-            cropped_images.append(center)
+        _image1 = tf.image.convert_image_dtype(ran_crop_image1, dtype=tf.float32) - IMAGENET_MEAN
+        _image2 = tf.image.convert_image_dtype(ran_crop_image2, dtype=tf.float32) - IMAGENET_MEAN
+        cropped_images.append(_image1)
+        cropped_images.append(_image2)
+    else:
         
-            # for horizental_fliped_image
-            horizental_fliped_image_topleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,:227], dtype=tf.float32) - IMAGENET_MEAN
-            horizental_fliped_image_topright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,:227], dtype=tf.float32) - IMAGENET_MEAN
-            horizental_fliped_image_bottomleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,29:256], dtype=tf.float32) - IMAGENET_MEAN
-            horizental_fliped_image_bottomright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,29:256], dtype=tf.float32) - IMAGENET_MEAN
-            horizental_fliped_image_center = tf.image.convert_image_dtype(horizental_fliped_image[15:242, 15:242], dtype=tf.float32) - IMAGENET_MEAN
+        # for original image
+        topleft = tf.image.convert_image_dtype(image[:227,:227], dtype=tf.float32) - IMAGENET_MEAN
+        topright = tf.image.convert_image_dtype(image[29:256,:227], dtype=tf.float32) - IMAGENET_MEAN
+        bottomleft = tf.image.convert_image_dtype(image[:227,29:256], dtype=tf.float32) - IMAGENET_MEAN
+        bottomright = tf.image.convert_image_dtype(image[29:256,29:256], dtype=tf.float32) - IMAGENET_MEAN
+        center = tf.image.convert_image_dtype(image[15:242, 15:242], dtype=tf.float32) - IMAGENET_MEAN
 
-            cropped_images.append(horizental_fliped_image_topleft)
-            cropped_images.append(horizental_fliped_image_topright)
-            cropped_images.append(horizental_fliped_image_bottomleft)
-            cropped_images.append(horizental_fliped_image_bottomright)
-            cropped_images.append(horizental_fliped_image_center)
+        cropped_images.append(topleft)
+        cropped_images.append(topright)
+        cropped_images.append(bottomleft)
+        cropped_images.append(bottomright)
+        cropped_images.append(center)
+    
+        # for horizental_fliped_image
+        horizental_fliped_image_topleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,:227], dtype=tf.float32) - IMAGENET_MEAN
+        horizental_fliped_image_topright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,:227], dtype=tf.float32) - IMAGENET_MEAN
+        horizental_fliped_image_bottomleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,29:256], dtype=tf.float32) - IMAGENET_MEAN
+        horizental_fliped_image_bottomright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,29:256], dtype=tf.float32) - IMAGENET_MEAN
+        horizental_fliped_image_center = tf.image.convert_image_dtype(horizental_fliped_image[15:242, 15:242], dtype=tf.float32) - IMAGENET_MEAN
+
+        cropped_images.append(horizental_fliped_image_topleft)
+        cropped_images.append(horizental_fliped_image_topright)
+        cropped_images.append(horizental_fliped_image_bottomleft)
+        cropped_images.append(horizental_fliped_image_bottomright)
+        cropped_images.append(horizental_fliped_image_center)
 
     return cropped_images
 
@@ -93,13 +98,6 @@ def get_logdir(root_logdir):
     run_id = dt.now().strftime("run_%Y_%m_%d-%H_%M_%S")
     
     return os.path.join(root_logdir, run_id)
-
-    
-def decode_image(image_data):
-    image = tf.image.decode_jpeg(image_data, channels=3)
-    image = tf.image.convert_image_dtype(image, tf.float32) - IMAGENET_MEAN # convert image to floats in [0, 1] range
-    # image = tf.reshape(image, [*IMAGE_SIZE, 3]) # explicit size needed for TPU
-    return image
 
 def _parse_function(example_proto):
     # Parse the input `tf.train.Example` proto using the dictionary above.
@@ -181,24 +179,23 @@ if __name__ == "__main__":
     train_buf_size = len(train_tfrecord_list)
     test_buf_size= len(test_tfrecord_list)
     
-    train_ds = tf.data.TFRecordDataset(train_tfrecord_list, num_parallel_reads=AUTO)
-    test_ds = tf.data.TFRecordDataset(test_tfrecord_list, num_parallel_reads=AUTO)
-    train_ds = train_ds.map(_parse_function)
-    test_ds = test_ds.map(_parse_function)
+    train_ds = tf.data.TFRecordDataset(filenames=train_tfrecord_list, num_parallel_reads=AUTO, compression_type="GZIP")
+    test_ds = tf.data.TFRecordDataset(test_tfrecord_list, num_parallel_reads=AUTO, compression_type="GZIP")
+    train_ds = train_ds.map(_parse_function, num_parallel_calls=AUTO)
+    test_ds = test_ds.map(_parse_function, num_parallel_calls=AUTO)
     train_ds = train_ds.shuffle(buffer_size=train_buf_size).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
     test_ds = test_ds.shuffle(buffer_size=test_buf_size).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
     
-    print(train_ds.take(1))
-    for i in train_ds.take(1):
-        print(i)
-    # raw_dataset_train = tf.data.TFRecordDataset(train_tfrecord_list, num_parallel_reads=AUTO)
-    # raw_dataset_test = tf.data.TFRecordDataset(test_tfrecord_list, num_parallel_reads=AUTO)
-    # train_ds = raw_dataset_train.map(_parse_function)
-    # test_ds = raw_dataset_test.map(_parse_function)
-    # train_ds = train_ds.shuffle(buffer_size=10000).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
-    # test_ds = test_ds.shuffle(buffer_size=2000).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
-    # m_train_ds = iter(train_ds)
-    # m_test_ds = iter(test_ds)
+    """check images are all right""" 
+    
+    # plt.figure(figsize=(20,20))
+
+    # for i, (image,_) in enumerate(train_ds.take(5)):
+    #     ax = plt.subplot(5,5,i+1)
+    #     plt.imshow(image[i])
+    #     plt.axis('off')
+    # plt.show()
+
     """
     Input Pipeline
     
@@ -222,15 +219,6 @@ if __name__ == "__main__":
                  합니다. (디스크에서 데이터를 읽고 전처리)
     """
 
-    """check images are all right""" 
-    
-    # plt.figure(figsize=(20,20))
-
-    # for i, (image,_) in enumerate(train_ds.take(5)):
-    #     ax = plt.subplot(5,5,i+1)
-    #     plt.imshow(image[i])
-    #     plt.axis('off')
-    # plt.show()
 
     _model = model.mAlexNet(INPUT_IMAGE_SIZE, LRN_INFO, NUM_CLASSES)
     loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
@@ -315,21 +303,22 @@ if __name__ == "__main__":
         start = time.perf_counter()
         for step, tb in enumerate(train_ds):
             
-            raw_images= tb['image']
-            raw_labels= tb['label']
+            raw_images= tb['image'].numpy()
+            raw_labels= tb['label'].numpy()
             
             images = list()
             labels = list()
 
             for i in range(0,BATCH_SIZE):
+
                 image = tf.image.decode_jpeg(raw_images[i], channels=3)
 
                 # cropped_image= p.starmap(image_cropping, [(image, True)])
-                with tf.device('/cpu:0'):
-                    cropped_image = image_cropping(image, training=True)
-                    for j in cropped_image:
-                        images.append(j)
-                        labels.append(raw_labels[i])
+                
+                cropped_image = image_cropping(image, training=True)
+                for j in cropped_image:
+                    images.append(j)
+                    labels.append(tf.cast(raw_labels[i], tf.int32))
 
             images = tf.stack(images)
             labels = tf.stack(labels)
@@ -354,17 +343,16 @@ if __name__ == "__main__":
                 # cropped_image= p.starmap(image_cropping, [(image, False)])
                 # cropped_intend_image= p.starmap(image_cropping, [(intend_image, False)])
 
-                with tf.device('/cpu:0'):
-                    intend_image = da.intensity_RGB(image=image)   # test때만 적용
-                    cropped_image = image_cropping(image, training=False)
-                    cropped_intend_image = image_cropping(intend_image, training=False)
+                intend_image = da.intensity_RGB(image=image)   # test때만 적용
+                cropped_image = image_cropping(image, training=False)
+                cropped_intend_image = image_cropping(intend_image, training=False)
 
-                    for j in cropped_image:
-                        images.append(j)
-                        labels.append(raw_labels[i])
-                    for j in cropped_intend_image:
-                        images.append(j)
-                        labels.append(raw_labels[i])
+                for j in cropped_image:
+                    images.append(j)
+                    labels.append(raw_labels[i])
+                for j in cropped_intend_image:
+                    images.append(j)
+                    labels.append(raw_labels[i])
                 
             images = tf.stack(images)
             labels = tf.stack(labels)
