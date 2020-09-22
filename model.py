@@ -48,7 +48,6 @@ class mAlexNet(Model):
     def call(self, x, training=None):
         
         # assert type(training) is not bool, print("training must be a boolean type")
-        print("inputs is ", tf.shape(x))
         radius, alpha, beta, bias = self.LRN_INFO
         
         if training:

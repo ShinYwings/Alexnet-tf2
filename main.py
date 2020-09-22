@@ -24,14 +24,17 @@ DATASET_DIR = r"D:\ILSVRC2012"
 TRAIN_TFRECORD_DIR = r"D:\ILSVRC2012\ILSVRC2012_tfrecord_train"
 TEST_TFRECORD_DIR = r"D:\ILSVRC2012\ILSVRC2012_tfrecord_val"
 
-# 함수 실험용
-SAMPLE_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_train"
-SAMPLE_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_val"
+# 학습 실험용
+SAMPLE_TRAIN_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_train"
+SAMPLE_TEST_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_val"
+
+# 학습 실험용
+FUNCTEST_TRAIN_TFRECORD_DIR = r"D:\ILSVRC2012\functest_tfrecord_train"
+FUNCTEST_TEST_TFRECORD_DIR = r"D:\ILSVRC2012\functest_tfrecord_val"
 
 LRN_INFO = (5, 1e-4, 0.75, 2) # radius, alpha, beta, bias   # hands-on 에서는 r=2 a = 0.00002, b = 0.75, k =1 이라고 되어있음...
 INPUT_IMAGE_SIZE = 227 #WIDTH, HEIGHT    # cropped by 256x256 images
 WEIGHT_DECAY = 5e-4
-# TODO optimizer (weight decay & lr/10 heuristic 방법) 추가
 
 # Fixed
 IMAGENET_MEAN = [122.10927936917298, 116.5416959998387, 102.61744377213829] # rgb format
@@ -46,51 +49,43 @@ def image_cropping(image , training = None):  # do it only in test time
     cropped_images = list()
 
     horizental_fliped_image = tf.image.flip_left_right(image)
-    
-    # if test_mode:
-    #     img = tf.image.resize(image, size=(227,227), method=tf.image.ResizeMethod.BILINEAR)
-    #     img2 = tf.image.resize(horizental_fliped_image, size=(227,227), method=tf.image.ResizeMethod.BILINEAR)
-        
-        # cropped_images.append(tf.image.convert_image_dtype(img, dtype=tf.float32) - IMAGENET_MEAN)
-        # cropped_images.append(tf.image.convert_image_dtype(img2, dtype=tf.float32) - IMAGENET_MEAN)         
-        # return cropped_images
 
     if training:
         ran_crop_image1 = tf.image.random_crop(image,size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
         ran_crop_image2 = tf.image.random_crop(horizental_fliped_image, 
                                     size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
 
-        _image1 = tf.image.convert_image_dtype(ran_crop_image1, dtype=tf.float32) - IMAGENET_MEAN
-        _image2 = tf.image.convert_image_dtype(ran_crop_image2, dtype=tf.float32) - IMAGENET_MEAN
-        cropped_images.append(_image1)
-        cropped_images.append(_image2)
+        _image1 = tf.image.convert_image_dtype(ran_crop_image1, dtype=tf.float32)
+        _image2 = tf.image.convert_image_dtype(ran_crop_image2, dtype=tf.float32)
+        cropped_images.append(tf.subtract(_image1, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(_image2, IMAGENET_MEAN))
     else:
         
         # for original image
-        topleft = tf.image.convert_image_dtype(image[:227,:227], dtype=tf.float32) - IMAGENET_MEAN
-        topright = tf.image.convert_image_dtype(image[29:256,:227], dtype=tf.float32) - IMAGENET_MEAN
-        bottomleft = tf.image.convert_image_dtype(image[:227,29:256], dtype=tf.float32) - IMAGENET_MEAN
-        bottomright = tf.image.convert_image_dtype(image[29:256,29:256], dtype=tf.float32) - IMAGENET_MEAN
-        center = tf.image.convert_image_dtype(image[15:242, 15:242], dtype=tf.float32) - IMAGENET_MEAN
+        topleft = tf.image.convert_image_dtype(image[:227,:227], dtype=tf.float32)
+        topright = tf.image.convert_image_dtype(image[29:256,:227], dtype=tf.float32)
+        bottomleft = tf.image.convert_image_dtype(image[:227,29:256], dtype=tf.float32)
+        bottomright = tf.image.convert_image_dtype(image[29:256,29:256], dtype=tf.float32)
+        center = tf.image.convert_image_dtype(image[15:242, 15:242], dtype=tf.float32)
 
-        cropped_images.append(topleft)
-        cropped_images.append(topright)
-        cropped_images.append(bottomleft)
-        cropped_images.append(bottomright)
-        cropped_images.append(center)
+        cropped_images.append(tf.subtract(topleft, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(topright, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(bottomleft, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(bottomright, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(center, IMAGENET_MEAN))
     
         # for horizental_fliped_image
-        horizental_fliped_image_topleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,:227], dtype=tf.float32) - IMAGENET_MEAN
-        horizental_fliped_image_topright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,:227], dtype=tf.float32) - IMAGENET_MEAN
-        horizental_fliped_image_bottomleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,29:256], dtype=tf.float32) - IMAGENET_MEAN
-        horizental_fliped_image_bottomright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,29:256], dtype=tf.float32) - IMAGENET_MEAN
-        horizental_fliped_image_center = tf.image.convert_image_dtype(horizental_fliped_image[15:242, 15:242], dtype=tf.float32) - IMAGENET_MEAN
+        horizental_fliped_image_topleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,:227], dtype=tf.float32)
+        horizental_fliped_image_topright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,:227], dtype=tf.float32)
+        horizental_fliped_image_bottomleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,29:256], dtype=tf.float32)
+        horizental_fliped_image_bottomright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,29:256], dtype=tf.float32)
+        horizental_fliped_image_center = tf.image.convert_image_dtype(horizental_fliped_image[15:242, 15:242], dtype=tf.float32)
 
-        cropped_images.append(horizental_fliped_image_topleft)
-        cropped_images.append(horizental_fliped_image_topright)
-        cropped_images.append(horizental_fliped_image_bottomleft)
-        cropped_images.append(horizental_fliped_image_bottomright)
-        cropped_images.append(horizental_fliped_image_center)
+        cropped_images.append(tf.subtract(horizental_fliped_image_topleft, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(horizental_fliped_image_topright, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(horizental_fliped_image_bottomleft, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(horizental_fliped_image_bottomright, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(horizental_fliped_image_center, IMAGENET_MEAN))
 
     return cropped_images
 
@@ -108,39 +103,6 @@ def _parse_function(example_proto):
     example = tf.io.parse_single_example(example_proto, feature_description)
 
     return example
-
-# def _parse_function(example_proto):
-    # # Parse the input `tf.train.Example` proto using the dictionary above.
-    # feature_description = {
-    #     'image': tf.io.FixedLenFeature([], tf.string),
-    #     'label': tf.io.FixedLenFeature([], tf.int64),
-    # }
-    # example = tf.io.parse_single_example(example_proto, feature_description)
-    # # a= np.array(, dtype=np.float32)
-    
-    # labels = example['label']
-    
-    # print("labels",labels)
-
-    # raw_imgs= example['image']
-
-    # a = list()
-    # for j in range(len(raw_imgs)):
-    #     raw_images = tf.io.decode_jpeg(raw_imgs[j], channels=3)
-    #     a.append(raw_images)
-    # # cropped_image = tf.image.resize(raw_images, (227, 227,3))
-    # # raw_images = tf.image.decode_jpeg(example['image'].numpy(), channels=3)
-    
-    # b = list()
-    # for i in a:
-    #     print(i)
-    #     cropped_image = tf.image.resize(i, [227,227], method= tf.image.ResizeMethod.BILINEAR)
-    #     b.append(cropped_image)
-    # print("images",b)
-    # images = np.array(b, dtype=np.float32) / 255.0
-    # print("images",images)
-    
-    # return (images, labels)
 
 if __name__ == "__main__":
 
@@ -163,16 +125,16 @@ if __name__ == "__main__":
     train_tfrecord_list = list()
     test_tfrecord_list = list()
 
-    train_dirs = os.listdir(TRAIN_TFRECORD_DIR)
-    test_dirs = os.listdir(TEST_TFRECORD_DIR)
+    train_dirs = os.listdir(SAMPLE_TRAIN_TFRECORD_DIR)
+    test_dirs = os.listdir(SAMPLE_TEST_TFRECORD_DIR)
     
     for train_dir in train_dirs:
-        dir_path = os.path.join(TRAIN_TFRECORD_DIR, train_dir)
+        dir_path = os.path.join(SAMPLE_TRAIN_TFRECORD_DIR, train_dir)
         a =tf.data.Dataset.list_files(os.path.join(dir_path, '*.tfrecord'))
         train_tfrecord_list.extend(a)
     
     for test_dir in test_dirs:
-        dir_path = os.path.join(TEST_TFRECORD_DIR, test_dir)
+        dir_path = os.path.join(SAMPLE_TEST_TFRECORD_DIR, test_dir)
         b = tf.data.Dataset.list_files(os.path.join(dir_path, '*.tfrecord'))
         test_tfrecord_list.extend(b)
 
@@ -219,13 +181,12 @@ if __name__ == "__main__":
                  합니다. (디스크에서 데이터를 읽고 전처리)
     """
 
-
     _model = model.mAlexNet(INPUT_IMAGE_SIZE, LRN_INFO, NUM_CLASSES)
     loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
 
     # TODO custom optimizer로 바꿔주기
-    # _optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
-    _optimizer = optimizer_alexnet.AlexSGD(learning_rate=LEARNING_RATE, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
+    _optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
+    # _optimizer = optimizer_alexnet.AlexSGD(learning_rate=LEARNING_RATE, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
     # _optimizer = tf.keras.optimizers.AlexSGD(learning_rate=LEARNING_RATE, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
     # 모델의 손실과 성능을 측정할 지표, 에포크가 진행되는 동안 수집된 측정 지표를 바탕으로 결과 출력
     train_loss = tf.keras.metrics.Mean(name= 'train_loss', dtype=tf.float32)
@@ -312,11 +273,12 @@ if __name__ == "__main__":
             for i in range(0,BATCH_SIZE):
 
                 image = tf.image.decode_jpeg(raw_images[i], channels=3)
-
-                # cropped_image= p.starmap(image_cropping, [(image, True)])
                 
-                cropped_image = image_cropping(image, training=True)
-                for j in cropped_image:
+                intend_image = da.intensity_RGB(image=image)   # training 때만 적용
+
+                cropped_intend_image = image_cropping(intend_image, training=True)
+
+                for j in cropped_intend_image:
                     images.append(j)
                     labels.append(tf.cast(raw_labels[i], tf.int32))
 
@@ -324,11 +286,10 @@ if __name__ == "__main__":
             labels = tf.stack(labels)
             
             train_step(_model, images, labels)
-            # print("Training Epoch:", epoch+1, " Training Step:",step)
+
         with summary_writer.as_default():
             tf.summary.scalar('train_loss', train_loss.result(), step=epoch+1)
             tf.summary.scalar('train_accuracy', train_accuracy.result(), step=epoch+1)
-            tf.summary.scalar('learning_rate', _optimizer._decayed_lr(tf.float32), step=step)
             
         for step, tc in enumerate(test_ds):
             raw_images= tc['image']
@@ -341,32 +302,30 @@ if __name__ == "__main__":
 
                 # intend_image = p.starmap(da.intensity_RGB, [(image)])
                 # cropped_image= p.starmap(image_cropping, [(image, False)])
-                # cropped_intend_image= p.starmap(image_cropping, [(intend_image, False)])
-
-                intend_image = da.intensity_RGB(image=image)   # test때만 적용
+                # cropped_intend_image= p.starmap(image_cropping, [(intend_image, False)]                
                 cropped_image = image_cropping(image, training=False)
-                cropped_intend_image = image_cropping(intend_image, training=False)
-
+                
                 for j in cropped_image:
                     images.append(j)
-                    labels.append(raw_labels[i])
-                for j in cropped_intend_image:
-                    images.append(j)
-                    labels.append(raw_labels[i])
+                    labels.append(tf.cast(raw_labels[i], tf.int32))
                 
             images = tf.stack(images)
             labels = tf.stack(labels)
             
-            test_step(_model, images, labels)
-            # print("Testing Epoch:", epoch+1, " Testing Step:",step)
+            batch_ds = tf.data.Dataset.from_tensor_slices((images, labels))
+            batch_ds = batch_ds.shuffle(buffer_size=len(labels)).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
+            
+            for batch_size_images, batch_size_labels in batch_ds:
+                test_step(_model, batch_size_images, batch_size_labels)
+
         with summary_writer.as_default():
             tf.summary.scalar('test_loss', test_loss.result(), step=epoch+1)
             tf.summary.scalar('test_accuracy', test_accuracy.result(), step=epoch+1)
             
-        print('에포크: {}, 손실: {}, 정확도: {}, 테스트 손실: {}, 테스트 정확도: {}'.format(epoch+1,train_loss.result(),
+        print('Epoch: {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}'.format(epoch+1,train_loss.result(),
                             train_accuracy.result()*100, test_loss.result(),test_accuracy.result()*100))
         
-        print("Epoch {} 의 총 소요시간: {}".format(epoch+1, time.perf_counter() - start))
+        print("Spends time({}) in Epoch {}".format(epoch+1, time.perf_counter() - start))
 
         train_loss.reset_states()
         test_loss.reset_states()

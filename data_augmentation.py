@@ -5,6 +5,8 @@ from numpy import linalg as LA
 import tensorflow as tf 
 import cv2
 
+ORIGINAL_IMAGE_SIZE = 256
+
 def image_aug(img = "img", evecs_mat= "evecs_mat", evals= "evals"):
     img = img
     mu = 0
@@ -17,11 +19,14 @@ def image_aug(img = "img", evecs_mat= "evecs_mat", evals= "evals"):
     # eval : eigenvalue
     # evec : eigenvector
     se = np.zeros(3)
-    se[0][0] = np.random.normal(mu, sigma)*evals[0]
-    se[1][0] = np.random.normal(mu, sigma)*evals[1]
-    se[2][0] = np.random.normal(mu, sigma)*evals[2]
+    a1= np.random.normal(mu, sigma)    # random variable은 main함수에다 해줘야함X 
+    a2 = np.random.normal(mu, sigma)   # 한 이미지가 트레이닝 한번 할때만 하는거니까
+    a3= np.random.normal(mu, sigma)
+    se[0] = a1* evals[0] 
+    se[1] = a2* evals[1] 
+    se[2] = a3* evals[2]
     se = np.matrix(se)
-    _I = tf.matmul(feature_vec, se)
+    _I = tf.matmul(feature_vec, se.T)
     _I = tf.cast(_I, tf.float32)
     I2 = np.squeeze(_I, axis=1)
 
@@ -33,7 +38,7 @@ def intensity_RGB(image= "image"):
 
     res = np.zeros(shape=(1,3))
     # re-shape to make list of RGB vectors.
-    arr=tf.reshape(image, shape=[(256*256),3])
+    arr=tf.reshape(image, shape=[(ORIGINAL_IMAGE_SIZE*ORIGINAL_IMAGE_SIZE),3])
     # consolidate RGB vectors of all images
     res = np.concatenate((res,arr),axis=0)
     res = np.delete(res, (0), axis=0)       # 0번째 쉘 지우기
