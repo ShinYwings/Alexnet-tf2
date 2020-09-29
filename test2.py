@@ -1,233 +1,131 @@
-import os
-import sys
-import cv2
 import tensorflow as tf
-import matplotlib.pyplot as plt
-import numpy as np
-import pickle as pk
-import time
-import loadMetaData as lmd
-import re
-from threading import Thread as t
-from multiprocessing import Process
-import math
+from tensorflow.keras import Model
+import tensorflow.keras
+from tensorflow.python.ops import math_ops
 
-# 독립적으로 실행되는 모듈
-# Reference: https://www.kaggle.com/ryanholbrook/tfrecords-basics
+class mulLayer(tf.keras.layers.Layer):
+    def __init__(self, weight_init="weight_init"):
+        super(mulLayer, self).__init__()
 
-TRAIN_IMAGE_DIR = r"D:\ILSVRC2012\ILSVRC2012_img_train"
-TEST_IMAGE_DIR = r"D:\ILSVRC2012\ILSVRC2012_img_val"
-TRAIN_TFREC_DIR = r"D:\ILSVRC2012\sample_tfrecord_train"
-TEST_TFREC_DIR = r"D:\ILSVRC2012\ILSVRC2012_tfrecord_val"
-TRAIN_FILE_NAME= lambda name : '{}.tfrecord'.format(name)
-TEST_FILE_NAME = lambda name : '{}.tfrecord'.format(name)
-IMAGE_SIZE = 256
-IMAGE_ENCODING_QUALITY = 70  # default 95
-TFRECORD_OPTION = tf.io.TFRecordOptions(compression_type="GZIP")
+        self.weight_init = weight_init
 
-def _int64_feature(value):
-  # if not isinstance(values, (tuple, list)):
-  #   values = [values]
-  return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+    def call(self, input):
+        return tf.scalar_mul(self.weight_init,input)
 
-def _bytes_feature(value):
-  """Returns a bytes_list from a string / byte."""
-  if isinstance(value, type(tf.constant(0))):
-    value = value.numpy() # BytesList won't unpack a string from an EagerTensor.
-  return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+class mAlexNet(Model):
+    def __init__(self, INPUT_SHAPE, LRN_INFO, NUM_CLASSES):
 
-def serialize_ds(image, label):
-  feature_description = {
-    'image': _bytes_feature(image),
-    'label': _int64_feature(label),
-  }
-  example_proto = tf.train.Example(features=tf.train.Features(feature=feature_description))
-  return example_proto.SerializeToString()
-
-def convert_image_to_bytes(image="image"):
-    #  이미지 받으면 RGB 순서로 받아짐. BGR로 받을지 안받을지는 알아서 결정해
-    # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)  
-    height, width, _ = np.shape(image)  # return int
-    
-    print(height, width)
-    # 한쪽만 256인 경우는 고려 안해줌. 256사이즈에 대해 그냥 resize하는 이유는 별로 시간 안걸리니까
-
-    # GPU로 돌리니까 이상하게 파싱되는듯 ㅠㅠ 메인함수에서 풀때 참조를 못함... 절대 쓰지말자
-    if width <= IMAGE_SIZE and height <= IMAGE_SIZE:
-        cropped_img = tf.image.resize(image, [IMAGE_SIZE, IMAGE_SIZE], method=tf.image.ResizeMethod.BILINEAR)
-    
-    elif width > height:
-        center = (width - IMAGE_SIZE) / 2
-        start = math.floor(center)
-        end = math.ceil(center)
-        resized_img = tf.image.resize(image, [IMAGE_SIZE,width], method=tf.image.ResizeMethod.BILINEAR)
-        cropped_img = resized_img[:,start:-end,:]
+        """ 
+        tf.keras.layers.Conv2D(
+            filters, kernel_size, strides=(1, 1), padding='valid', data_format=None,
+            dilation_rate=(1, 1), groups=1, activation=None, use_bias=True,
+            kernel_initializer='glorot_uniform', bias_initializer='zeros',
+            kernel_regularizer=None, bias_regularizer=None, activity_regularizer=None,
+            kernel_constraint=None, bias_constraint=None, **kwargs
+        )
         
-    else:
-        center = (height - IMAGE_SIZE) / 2
-        start = math.floor(center)
-        end = math.ceil(center)
-        resized_img = tf.image.resize(image, [height,IMAGE_SIZE], method=tf.image.ResizeMethod.BILINEAR)
-        cropped_img = resized_img[start:-end,:,:]
-    
-    # encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), IMAGE_ENCODING_QUALITY]
-    # _, im_buf_arr = cv2.imencode(".JPEG", cropped_img, encode_param) # or .JPEG
+        """
+        super(mAlexNet, self).__init__()
+        self._INPUT_SHAPE = INPUT_SHAPE
+        self.NUM_CLASSES = NUM_CLASSES
+        self.radius, self.alpha, self.beta, self.bias = LRN_INFO
 
-    # img_raw = im_buf_arr.tobytes()
-    convert_image = tf.cast(cropped_img, tf.uint8)
-
-    plt.imshow(convert_image)
-    plt.show()
-    
-    img_raw = tf.io.encode_jpeg(convert_image, quality=70)
-    
-    return img_raw
-
-def parse_to_tfrecord(meta_data = "meta_data", splited_dir_list = "splited_dir_list", 
-                        tfrecord_dir= "tfrecord_dir", train=None,  mdir = "mdir",
-                          image_dir = "image_dir", mindex = "mindex"):
-
-    for dir_path in splited_dir_list:
+        _input_shape = (128, self._INPUT_SHAPE, self._INPUT_SHAPE, 3)
         
-        in_dir_path = os.path.join(image_dir, dir_path)
+        self.conv1 = tf.keras.layers.Conv2D(96, input_shape=_input_shape[1:], kernel_size=(11,11), 
+                                            strides=(4,4), padding="valid", 
+                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(0))
+        self.conv2 = tf.keras.layers.Conv2D(256,kernel_size=(5,5), strides=(1,1), padding="same",
+                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.conv3 = tf.keras.layers.Conv2D(384,kernel_size=(3,3), strides=(1,1), padding="same",
+                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(0))
+        self.conv4 = tf.keras.layers.Conv2D(384,kernel_size=(3,3), strides=(1,1), padding="same",
+                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.conv5 = tf.keras.layers.Conv2D(256,kernel_size=(3,3), strides=(1,1), padding="same",
+                                            activation='relu',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        
+        self.pool1 = tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid")
+        self.pool2 = tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid")
+        self.pool3 = tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid")
 
-        all_file_list = os.listdir(in_dir_path)
+        self.flatten = tf.keras.layers.Flatten()
+        self.fc1 = tf.keras.layers.Dense(4096,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.dropout1 = tf.keras.layers.Dropout(0.5)
+        self.fc2 = tf.keras.layers.Dense(4096, activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.dropout2 = tf.keras.layers.Dropout(0.5)
+        self.fc3 = tf.keras.layers.Dense(self.NUM_CLASSES, activation='softmax', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
 
-        new_dir = os.path.join(tfrecord_dir, dir_path)
+        self.mul1 = mulLayer(weight_init=0.5)
+        self.mul2 = mulLayer(weight_init=0.5)
+    
+    def call(self, x, training=None):
+        
+        # assert type(training) is not bool, print("training must be a boolean type")
+        
+        if training:
 
-        if not os.path.isdir(new_dir):
-            os.mkdir(new_dir)
-        os.chdir(new_dir)
-
-        index = mdir.index(dir_path)
-        # print(type(),"번째 index")
-        # print("dir_path", dir_path)
-        for file_name in all_file_list:
+            # 1st layer
+            inputs = self.conv1(x)
+            lrn1 = tf.nn.local_response_normalization(inputs, depth_radius=self.radius,
+                                                            alpha=self.alpha, beta=self.beta, bias=self.bias)
+            # lrn1 = self.bn1(inputs)
+            mp1 = self.pool1(lrn1)
             
-            file_path = os.path.join(in_dir_path, file_name)
-            # original_image = cv2.imread(file_path)
-            with open(file_path, 'rb') as f:
-                raw_image = f.read()
-                original_image = tf.io.decode_jpeg(raw_image)
+            # 2nd layer
+            cnv2 = self.conv2(mp1)
+            lrn2 = tf.nn.local_response_normalization(cnv2, depth_radius=self.radius,
+                                                            alpha=self.alpha, beta=self.beta, bias=self.bias)
+            # lrn2 = self.bn2(cnv2)
+            mp2 = self.pool2(lrn2)
+            
+            # 3rd layer
+            cnv3 = self.conv3(mp2)
+            
+            # 4th layer
+            cnv4 = self.conv4(cnv3)
+            
+            # 5th layer
+            cnv5 = self.conv5(cnv4)
+            mp3 = self.pool3(cnv5)
 
-                image_bytes = convert_image_to_bytes(original_image)
+            # fc layers
+            ft = self.flatten(mp3)
+            fcl1 = self.fc1(ft)
+            do1 = self.dropout1(fcl1)
+            fcl2 = self.fc2(do1)
+            do2 = self.dropout2(fcl2)
+            return self.fc3(do2)
 
-            with tf.io.TFRecordWriter(TRAIN_FILE_NAME(file_name.split(".")[0]), TFRECORD_OPTION) as writer:
-                print("parsing train",file_name)
-                example = serialize_ds(image_bytes, mindex[index])
-                writer.write(example)
-                    
-            # else:
-            #   with tf.io.TFRecordWriter(TEST_FILE_NAME(file_name.split(".")[0]), TFRECORD_OPTION) as writer:
-            #     print("parsing test",file_name)
-            #     example = serialize_ds(image_bytes, mindex[index])
-            #     writer.write(example)
-                
-            writer.close()
+        else:   # test model
+            # 1st layer
+            inputs = self.conv1(x)
+            lrn1 = tf.nn.local_response_normalization(inputs, depth_radius=self.radius,
+                                                            alpha=self.alpha, beta=self.beta, bias=self.bias)
+            mp1 = self.pool1(lrn1)
+            
+            # 2nd layer
+            cnv2 = self.conv2(mp1)
+            lrn2 = tf.nn.local_response_normalization(cnv2, depth_radius=self.radius,
+                                                            alpha=self.alpha, beta=self.beta, bias=self.bias)
+            mp2 = self.pool2(lrn2)
 
-    print("finish loading dataset of",image_dir)
-    
-if __name__ == "__main__":
+            # 3rd layer
+            cnv3 = self.conv3(mp2)
+            
+            # 4th layer
+            cnv4 = self.conv4(cnv3)
+            
+            # 5th layer
+            cnv5 = self.conv5(cnv4)
+            mp3 = self.pool3(cnv5)
 
-  # dir, index, name
-  metadata = lmd.load_ILSVRC2012_metadata()
-
-  _dir, _index, _name = metadata
-
-  #train
-  if not os.path.isdir(TRAIN_TFREC_DIR):
-      os.mkdir(TRAIN_TFREC_DIR)
-  os.chdir(TRAIN_TFREC_DIR)
-
-  train_dir_list = os.listdir(TRAIN_IMAGE_DIR)
-
-  parse_to_tfrecord(meta_data = metadata, splited_dir_list = train_dir_list, 
-                        tfrecord_dir= TRAIN_TFREC_DIR, train=True,  mdir = _dir,
-                          image_dir = TRAIN_IMAGE_DIR, mindex = _index)
-#   split_number = math.ceil(len(train_dir_list) / 8)
-#   train_splited_dir_list = [train_dir_list[x:x + split_number] for x in range(0, len(train_dir_list), split_number)]
-
-#   p1 = Process(target=parse_to_tfrecord,
-#               args=(metadata, train_splited_dir_list, 
-#                 TRAIN_TFREC_DIR, True, _dir,
-#                   TRAIN_IMAGE_DIR, _index))
-  # p2 = Process(target=parse_to_tfrecord,
-  #             args=(metadata, train_splited_dir_list[1], 
-  #               TRAIN_TFREC_DIR, True, _dir,
-  #                 TRAIN_IMAGE_DIR, _index))
-  # p3 = Process(target=parse_to_tfrecord,
-  #             args=(metadata, train_splited_dir_list[2], 
-  #               TRAIN_TFREC_DIR, True, _dir,
-  #                 TRAIN_IMAGE_DIR, _index))
-  # p4 = Process(target=parse_to_tfrecord,
-  #             args=(metadata, train_splited_dir_list[3], 
-  #               TRAIN_TFREC_DIR, True, _dir,
-  #                 TRAIN_IMAGE_DIR, _index))
-  # p5 = Process(target=parse_to_tfrecord,
-  #             args=(metadata, train_splited_dir_list[4], 
-  #               TRAIN_TFREC_DIR, True, _dir,
-  #                 TRAIN_IMAGE_DIR, _index))
-  # p6 = Process(target=parse_to_tfrecord,
-  #             args=(metadata, train_splited_dir_list[5], 
-  #               TRAIN_TFREC_DIR, True, _dir,
-  #                 TRAIN_IMAGE_DIR, _index))
-  # p7 = Process(target=parse_to_tfrecord,
-  #             args=(metadata, train_splited_dir_list[6], 
-  #               TRAIN_TFREC_DIR, True, _dir,
-  #                 TRAIN_IMAGE_DIR, _index))
-  # p8 = Process(target=parse_to_tfrecord,
-  #             args=(metadata, train_splited_dir_list[7], 
-  #               TRAIN_TFREC_DIR, True, _dir,
-  #                 TRAIN_IMAGE_DIR, _index))
-
-  #test
-#   if not os.path.isdir(TEST_TFREC_DIR):
-#       os.mkdir(TEST_TFREC_DIR)
-#   os.chdir(TEST_TFREC_DIR)
-
-#   val_dir_list = os.listdir(TEST_IMAGE_DIR)
-  
-#   split_number = math.ceil(len(val_dir_list) / 8)
-#   test_splited_dir_list = [val_dir_list[x:x + split_number] for x in range(0, len(val_dir_list), split_number)]
-
-#   p1 = Process(target=parse_to_tfrecord,
-#               args=(metadata, test_splited_dir_list[0], 
-#                 TEST_TFREC_DIR, False, _dir,
-#                   TEST_IMAGE_DIR, _index))
-#   p2 = Process(target=parse_to_tfrecord,
-#               args=(metadata, test_splited_dir_list[1], 
-#                 TEST_TFREC_DIR, False, _dir,
-#                   TEST_IMAGE_DIR, _index))
-#   p3 = Process(target=parse_to_tfrecord,
-#               args=(metadata, test_splited_dir_list[2], 
-#                 TEST_TFREC_DIR, False, _dir,
-#                   TEST_IMAGE_DIR, _index))
-#   p4 = Process(target=parse_to_tfrecord,
-#               args=(metadata, test_splited_dir_list[3], 
-#                 TEST_TFREC_DIR, False, _dir,
-#                   TEST_IMAGE_DIR, _index))
-#   p5 = Process(target=parse_to_tfrecord,
-#               args=(metadata, test_splited_dir_list[4], 
-#                 TEST_TFREC_DIR, False, _dir,
-#                   TEST_IMAGE_DIR, _index))        
-#   p6 = Process(target=parse_to_tfrecord,
-#               args=(metadata, test_splited_dir_list[5], 
-#                 TEST_TFREC_DIR, False, _dir,
-#                   TEST_IMAGE_DIR, _index))
-#   p7 = Process(target=parse_to_tfrecord,
-#               args=(metadata, test_splited_dir_list[6], 
-#                 TEST_TFREC_DIR, False, _dir,
-#                   TEST_IMAGE_DIR, _index))
-#   p8 = Process(target=parse_to_tfrecord,
-#               args=(metadata, test_splited_dir_list[7], 
-#                 TEST_TFREC_DIR, False, _dir,
-#                   TEST_IMAGE_DIR, _index))                                
-#   p1.start()
-#   p2.start()
-#   p3.start()
-#   p4.start()
-#   p5.start()
-#   p6.start()
-#   p7.start()
-#   p8.start()
-  
+            # fc layers
+            ft = self.flatten(mp3)
+            fcl1 = self.fc1(ft)
+            mul1 = self.mul1(fcl1)
+            fcl2 = self.fc2(mul1)
+            # multiply their outputs by 0.5
+            mul2 = self.mul2(fcl2)
+            fcl3 = self.fc3(mul2)
+            
+            return fcl3

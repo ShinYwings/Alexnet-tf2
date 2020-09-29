@@ -16,10 +16,10 @@ import shutil
 # 독립적으로 실행되는 모듈
 # Reference: https://www.kaggle.com/ryanholbrook/tfrecords-basics
 
-TRAIN_IMAGE_DIR = r"D:\ILSVRC2012\ILSVRC2012_tfrecord_train"
-TEST_IMAGE_DIR = r"D:\ILSVRC2012\ILSVRC2012_tfrecord_val"
-TRAIN_TFREC_DIR = r"D:\ILSVRC2012\functest_tfrecord_train"
-TEST_TFREC_DIR = r"D:\ILSVRC2012\functest_tfrecord_val"
+TRAIN_IMAGE_DIR = r"D:\ILSVRC2012\95_tfrecord_train"
+TEST_IMAGE_DIR = r"D:\ILSVRC2012\10000_q95_tfrecord_val"
+TRAIN_TFREC_DIR = r"D:\ILSVRC2012\20000_q95_tfrecord_train"
+TEST_TFREC_DIR = r"D:\ILSVRC2012\5000_q95_tfrecord_val"
 
 def mv_tfrecord(meta_data = "meta_data", splited_dir_list = "splited_dir_list", 
                         tfrecord_dir= "tfrecord_dir", train=None,  mdir = "mdir",
@@ -40,7 +40,7 @@ def mv_tfrecord(meta_data = "meta_data", splited_dir_list = "splited_dir_list",
 
         # print(all_file_list[:3])
 
-        for file_name in all_file_list[:1]:
+        for file_name in all_file_list[:5]:
 
             # print("file_name", file_name)
             

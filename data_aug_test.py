@@ -78,8 +78,9 @@ res = np.zeros(shape=(1,3))
 arr=tf.reshape(tf_image, shape=[(256*256),3])
 # consolidate RGB vectors of all images
 res = np.concatenate((res,arr),axis=0)
+print("res전", res)
 res = np.delete(res, (0), axis=0)       # 0 인 쉘 지우기
-
+print("res전", res)
 # Subtract the mean from each dimension
 # m = res.mean(axis = 0)
 # res = (res - m )

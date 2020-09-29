@@ -2,19 +2,21 @@ import tensorflow as tf
 import numpy as np
 import os
 import sys
-import model as model
+import test2 as model
 import time
+import math
+# data aug
 import data_augmentation as da
 from datetime import datetime as dt
 from matplotlib import pyplot as plt
 import optimizer_alexnet
 import cv2
 import multiprocessing
-import IPython.display as display
+import progressbar
 
 # Hyper parameters
 # TODO : argparse?
-LEARNING_RATE = 0.01
+LEARNING_RATE = 1e-3
 NUM_EPOCHS = 90
 NUM_CLASSES = 1000    # IMAGENET 2012
 MOMENTUM = 0.9 # SGD + MOMENTUM
@@ -25,14 +27,28 @@ DATASET_DIR = r"D:\ILSVRC2012"
 TRAIN_TFRECORD_DIR = r"D:\ILSVRC2012\ILSVRC2012_tfrecord_train"
 TEST_TFRECORD_DIR = r"D:\ILSVRC2012\ILSVRC2012_tfrecord_val"
 
-# 함수 실험용
-SAMPLE_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_train"
-SAMPLE_TFRECORD_val_DIR = r"D:\ILSVRC2012\sample_tfrecord_val"
+# 학습 실험용
+SAMPLE_TRAIN_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_train"
+SAMPLE_TEST_TFRECORD_DIR = r"D:\ILSVRC2012\sample_tfrecord_val"
 
+SAMPLE2_TRAIN_TFRECORD_DIR = r"D:\ILSVRC2012\20000_tfrecord_train"
+SAMPLE2_TEST_TFRECORD_DIR = r"D:\ILSVRC2012\5000_tfrecord_val"
+
+SAMPLE3_TRAIN_TFRECORD_DIR = r"D:\ILSVRC2012\20000_q95_tfrecord_train"
+SAMPLE3_TEST_TFRECORD_DIR = r"D:\ILSVRC2012\5000_q95_tfrecord_val"
+
+# 함수 실험용
+FUNCTEST_TRAIN_TFRECORD_DIR = r"D:\ILSVRC2012\functest_tfrecord_train"
+FUNCTEST_TEST_TFRECORD_DIR = r"D:\ILSVRC2012\functest_tfrecord_val"
+
+# Input으로 넣을 데이터 선택
+RUN_TRAIN_DATASET = SAMPLE2_TRAIN_TFRECORD_DIR
+RUN_TEST_DATASET = SAMPLE2_TEST_TFRECORD_DIR
+
+# 이건 핸즈온 책에서 참조 LRN_INFO = (2, 2e-5, 0.75, 1)
 LRN_INFO = (5, 1e-4, 0.75, 2) # radius, alpha, beta, bias   # hands-on 에서는 r=2 a = 0.00002, b = 0.75, k =1 이라고 되어있음...
 INPUT_IMAGE_SIZE = 227 #WIDTH, HEIGHT    # cropped by 256x256 images
 WEIGHT_DECAY = 5e-4
-# TODO optimizer (weight decay & lr/10 heuristic 방법) 추가
 
 # Fixed
 IMAGENET_MEAN = [122.10927936917298, 116.5416959998387, 102.61744377213829] # rgb format
@@ -40,59 +56,73 @@ DROUPUT_PROP = 0.5
 ENCODING_STYLE = "utf-8"
 AUTO = tf.data.experimental.AUTOTUNE
 CPU_CORE = multiprocessing.cpu_count()
-def image_cropping(image , training = None):  # do it only in test time
+
+widgets = [' [', 
+         progressbar.Timer(format= 'elapsed time: %(elapsed)s'), 
+         '] ', 
+           progressbar.Bar('/'),' (', 
+           progressbar.ETA(), ') ', 
+
+          ] 
+
+def examine_image_cropping(image):
+    global INPUT_IMAGE_SIZE
+    
+    ran_crop_image = tf.image.random_crop(image, 
+                                            size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
+    _image = tf.cast(ran_crop_image, dtype=tf.float32)
+    
+    _image = tf.subtract(_image, IMAGENET_MEAN)
+
+    return _image
+
+def image_cropping(raw_image , training = None):  # do it only in test time
     
     global INPUT_IMAGE_SIZE
 
     cropped_images = list()
 
     horizental_fliped_image = tf.image.flip_left_right(image)
-    
-    # if test_mode:
-    #     img = tf.image.resize(image, size=(227,227), method=tf.image.ResizeMethod.BILINEAR)
-    #     img2 = tf.image.resize(horizental_fliped_image, size=(227,227), method=tf.image.ResizeMethod.BILINEAR)
-        
-        # cropped_images.append(tf.image.convert_image_dtype(img, dtype=tf.float32) - IMAGENET_MEAN)
-        # cropped_images.append(tf.image.convert_image_dtype(img2, dtype=tf.float32) - IMAGENET_MEAN)         
-        # return cropped_images
 
     if training:
         ran_crop_image1 = tf.image.random_crop(image,size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
         ran_crop_image2 = tf.image.random_crop(horizental_fliped_image, 
                                     size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
 
-        _image1 = tf.image.convert_image_dtype(ran_crop_image1, dtype=tf.float32) - IMAGENET_MEAN
-        _image2 = tf.image.convert_image_dtype(ran_crop_image2, dtype=tf.float32) - IMAGENET_MEAN
-        cropped_images.append(_image1)
-        cropped_images.append(_image2)
+        # _image1 = tf.cast(ran_crop_image1, dtype=tf.float32)
+        # _image2 = tf.cast(ran_crop_image2, dtype=tf.float32)
+
+        cropped_images.append(tf.subtract(ran_crop_image1, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(ran_crop_image2, IMAGENET_MEAN))
+
     else:
         
         # for original image
-        topleft = tf.image.convert_image_dtype(image[:227,:227], dtype=tf.float32) - IMAGENET_MEAN
-        topright = tf.image.convert_image_dtype(image[29:256,:227], dtype=tf.float32) - IMAGENET_MEAN
-        bottomleft = tf.image.convert_image_dtype(image[:227,29:256], dtype=tf.float32) - IMAGENET_MEAN
-        bottomright = tf.image.convert_image_dtype(image[29:256,29:256], dtype=tf.float32) - IMAGENET_MEAN
-        center = tf.image.convert_image_dtype(image[15:242, 15:242], dtype=tf.float32) - IMAGENET_MEAN
+        topleft = tf.cast(image[:227,:227], dtype=tf.float32)
+        topright = tf.cast(image[29:,:227], dtype=tf.float32)
+        bottomleft = tf.cast(image[:227,29:], dtype=tf.float32)
+        bottomright = tf.cast(image[29:,29:], dtype=tf.float32)
+        center = tf.cast(image[15:242, 15:242], dtype=tf.float32)
 
-        cropped_images.append(topleft)
-        cropped_images.append(topright)
-        cropped_images.append(bottomleft)
-        cropped_images.append(bottomright)
-        cropped_images.append(center)
-    
+        cropped_images.append(tf.subtract(topleft, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(topright, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(bottomleft, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(bottomright, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(center, IMAGENET_MEAN))
+        
         # for horizental_fliped_image
-        horizental_fliped_image_topleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,:227], dtype=tf.float32) - IMAGENET_MEAN
-        horizental_fliped_image_topright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,:227], dtype=tf.float32) - IMAGENET_MEAN
-        horizental_fliped_image_bottomleft = tf.image.convert_image_dtype(horizental_fliped_image[:227,29:256], dtype=tf.float32) - IMAGENET_MEAN
-        horizental_fliped_image_bottomright = tf.image.convert_image_dtype(horizental_fliped_image[29:256,29:256], dtype=tf.float32) - IMAGENET_MEAN
-        horizental_fliped_image_center = tf.image.convert_image_dtype(horizental_fliped_image[15:242, 15:242], dtype=tf.float32) - IMAGENET_MEAN
+        horizental_fliped_image_topleft = tf.cast(horizental_fliped_image[:227,:227], dtype=tf.float32)
+        horizental_fliped_image_topright = tf.cast(horizental_fliped_image[29:,:227], dtype=tf.float32)
+        horizental_fliped_image_bottomleft = tf.cast(horizental_fliped_image[:227,29:], dtype=tf.float32)
+        horizental_fliped_image_bottomright = tf.cast(horizental_fliped_image[29:,29:], dtype=tf.float32)
+        horizental_fliped_image_center = tf.cast(horizental_fliped_image[15:242, 15:242], dtype=tf.float32)
 
-        cropped_images.append(horizental_fliped_image_topleft)
-        cropped_images.append(horizental_fliped_image_topright)
-        cropped_images.append(horizental_fliped_image_bottomleft)
-        cropped_images.append(horizental_fliped_image_bottomright)
-        cropped_images.append(horizental_fliped_image_center)
-
+        cropped_images.append(tf.subtract(horizental_fliped_image_topleft, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(horizental_fliped_image_topright, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(horizental_fliped_image_bottomleft, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(horizental_fliped_image_bottomright, IMAGENET_MEAN))
+        cropped_images.append(tf.subtract(horizental_fliped_image_center, IMAGENET_MEAN))
+        
     return cropped_images
 
 def get_logdir(root_logdir):
@@ -101,51 +131,33 @@ def get_logdir(root_logdir):
     return os.path.join(root_logdir, run_id)
 
 def _parse_function(example_proto):
-    # Parse the input `tf.train.Example` 
+
+    print("exampple_proto", example_proto)
+    # Parse the input `tf.train.Example` proto using the dictionary above.
     feature_description = {
         'image': tf.io.FixedLenFeature([], tf.string),
         'label': tf.io.FixedLenFeature([], tf.int64),
     }
     example = tf.io.parse_single_example(example_proto, feature_description)
-    print("example", example)
-    raw_images = tf.image.decode_jpeg(example['image'], channels=3)
-    print(raw_images)
-    print("image", example['image'])
-    print("label", example['label'])
+
     return example
 
-# def _parse_function(example_proto):
-    # # Parse the input `tf.train.Example` proto using the dictionary above.
-    # feature_description = {
-    #     'image': tf.io.FixedLenFeature([], tf.string),
-    #     'label': tf.io.FixedLenFeature([], tf.int64),
-    # }
-    # example = tf.io.parse_single_example(example_proto, feature_description)
-    # # a= np.array(, dtype=np.float32)
-    
-    # labels = example['label']
-    
-    # print("labels",labels)
+# def _refine_function(example):
 
-    # raw_imgs= example['image']
+#     global BATCH_SIZE
 
-    # a = list()
-    # for j in range(len(raw_imgs)):
-    #     raw_images = tf.io.decode_jpeg(raw_imgs[j], channels=3)
-    #     a.append(raw_images)
-    # # cropped_image = tf.image.resize(raw_images, (227, 227,3))
-    # # raw_images = tf.image.decode_jpeg(example['image'].numpy(), channels=3)
-    
-    # b = list()
-    # for i in a:
-    #     print(i)
-    #     cropped_image = tf.image.resize(i, [227,227], method= tf.image.ResizeMethod.BILINEAR)
-    #     b.append(cropped_image)
-    # print("images",b)
-    # images = np.array(b, dtype=np.float32) / 255.0
-    # print("images",images)
-    
-    # return (images, labels)
+#     _images = example['image']
+#     _labels = example['label']
+#     images = tf.stack(tf.zeros([1, 227,227,3]))
+#     i = tf.constant(0)
+#     tf.while_loop(lambda images, i: tf.less(i,128), 
+#                    lambda  images, i: [tf.stack([images, examine_image_cropping(_images[i])]), tf.add(i, 1)],
+#                     loop_vars=[images, i] , shape_invariants=[tf.TensorShape([None, 227, 227, 3]), i.get_shape()])
+#     # tf.squeeze(images, axis=0)
+#     tf.print(tf.shape(images))
+#     labels = tf.cast(_labels-1, tf.int32)
+
+#     return images, labels
 
 if __name__ == "__main__":
 
@@ -155,93 +167,51 @@ if __name__ == "__main__":
     sys.path.append(dataset_dir)
 
     """Path for tf.summary.FileWriter and to store model checkpoints"""
-    # filewriter_path = os.path.join(root_dir, "tensorboard")
-    # checkpoint_path = os.path.join(root_dir, "checkpoints")
+    filewriter_path = os.path.join(root_dir, "tensorboard")
+    checkpoint_path = os.path.join(root_dir, "checkpoints")
 
     """Create parent path if it doesn't exist"""
-    # if not os.path.isdir(checkpoint_path):
-    #     os.mkdir(checkpoint_path)
+    if not os.path.isdir(checkpoint_path):
+        os.mkdir(checkpoint_path)
 
-    # if not os.path.isdir(filewriter_path):
-    #     os.mkdir(filewriter_path)
+    if not os.path.isdir(filewriter_path):
+        os.mkdir(filewriter_path)
     
     train_tfrecord_list = list()
     test_tfrecord_list = list()
 
-    train_dirs = os.listdir(SAMPLE_TFRECORD_DIR)
-    # test_dirs = os.listdir(TEST_TFRECORD_DIR)
+    train_dirs = os.listdir(RUN_TRAIN_DATASET)
+    test_dirs = os.listdir(RUN_TEST_DATASET)
     
     for train_dir in train_dirs:
-        dir_path = os.path.join(SAMPLE_TFRECORD_DIR, train_dir)
+        dir_path = os.path.join(RUN_TRAIN_DATASET, train_dir)
         a =tf.data.Dataset.list_files(os.path.join(dir_path, '*.tfrecord'))
         train_tfrecord_list.extend(a)
-        # ddd = os.listdir(dir_path)
-        
-        # for a in ddd:
-
-        #     file_path = os.path.join(dir_path, a)
-        #     train_tfrecord_list.append(file_path)
-
-    # ww =tf.data.Dataset.list_files(train_tfrecord_list)
     
+    for test_dir in test_dirs:
+        dir_path = os.path.join(RUN_TEST_DATASET, test_dir)
+        b = tf.data.Dataset.list_files(os.path.join(dir_path, '*.tfrecord'))
+        test_tfrecord_list.extend(b)
 
     train_buf_size = len(train_tfrecord_list)
+    test_buf_size= len(test_tfrecord_list)
     print("train_buf_size", train_buf_size)
-    # test_buf_size= len(test_tfrecord_list)
-    train_ds = tf.data.TFRecordDataset(train_tfrecord_list, compression_type="GZIP") # , 
-
-    # test_ds = tf.data.TFRecordDataset(test_tfrecord_list, num_parallel_reads=AUTO, compression_type="GZIP")
+    print("test_buf_size", test_buf_size)
+    train_ds = tf.data.TFRecordDataset(filenames=train_tfrecord_list, num_parallel_reads=AUTO, compression_type="GZIP")
+    test_ds = tf.data.TFRecordDataset(filenames=test_tfrecord_list, num_parallel_reads=AUTO, compression_type="GZIP")
+    
+    # train_ds = train_ds.shuffle(buffer_size=train_buf_size)
+    # test_ds = test_ds.shuffle(buffer_size=test_buf_size)
+    
     train_ds = train_ds.map(_parse_function, num_parallel_calls=AUTO)
-    # test_ds = test_ds.map(_parse_function)
-    train_ds = train_ds.shuffle(buffer_size=train_buf_size).batch(batch_size=2, drop_remainder=True).prefetch(AUTO)
-    # test_ds = test_ds.shuffle(buffer_size=test_buf_size).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
+    test_ds = test_ds.map(_parse_function, num_parallel_calls=AUTO)
+
+    train_ds = train_ds.batch(batch_size=BATCH_SIZE, drop_remainder=False).prefetch(AUTO)
+    test_ds = test_ds.batch(batch_size=BATCH_SIZE, drop_remainder=False).prefetch(AUTO)
     
-    for i in train_ds:
-        # b=i['image'].numpy()
-        
-        imgs= i['image'].numpy()
-        labels = i['label'].numpy()
-        
-        image = tf.image.decode_jpeg(imgs[1], channels=3)
-        label = tf.cast(labels, tf.int32)
-        print("???")
-        # e = np.frombuffer(b, np.uint8)
-        # print("e", np.shape(e))
-        # print("e", len(e))
 
-        # d= cv2.imdecode(e, flags=1)
-        
-        plt.imshow(image)
-        plt.show()
-
-    print("mmmm")
-    # raw_dataset_train = tf.data.TFRecordDataset(train_tfrecord_list, num_parallel_reads=AUTO)
-    # raw_dataset_test = tf.data.TFRecordDataset(test_tfrecord_list, num_parallel_reads=AUTO)
-    # train_ds = raw_dataset_train.map(_parse_function)
-    # test_ds = raw_dataset_test.map(_parse_function)
-    # train_ds = train_ds.shuffle(buffer_size=10000).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
-    # test_ds = test_ds.shuffle(buffer_size=2000).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
-
-    # x = np.frombuffer(img[0], dtype=np.uint8) # 이거는 크기를 받아오네 ㅠㅠㅠㅠㅠㅠㅠㅠㅠ 95로하면 3만 70으로하면 12000....
-    # print(x.reshape((256,256,3)))
-    # image = cv2.imdecode(img, -1)
-
-
-    # for i in train_ds.take(1):
-        # print(i)
-        # 이건 올바르게 들어옴
-        
-        # label = raw_label
-        # print("label", label)
-        
-    
-    # image = tf.cast(image, tf.float32)
-    # print("?????????",images)
-    # display.display(display.Image(data=b))
-    # cv2.imshow(b[0].numpy())
-        
     """check images are all right""" 
-        
+    
     # plt.figure(figsize=(20,20))
 
     # for i, (image,_) in enumerate(train_ds.take(5)):
@@ -273,20 +243,22 @@ if __name__ == "__main__":
                  합니다. (디스크에서 데이터를 읽고 전처리)
     """
 
+    _model = model.mAlexNet(INPUT_IMAGE_SIZE, LRN_INFO, NUM_CLASSES)
+    loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
 
-    # _model = model.mAlexNet(INPUT_IMAGE_SIZE, LRN_INFO, NUM_CLASSES)
-    # loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
-
-    # # TODO custom optimizer로 바꿔주기
-    # # _optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
+    learning_rate_fn = optimizer_alexnet.AlexNetLRSchedule(initial_learning_rate = LEARNING_RATE)
+    # _optimizer = optimizer_alexnet.AlexSGD(learning_rate=learning_rate_fn, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
     # _optimizer = optimizer_alexnet.AlexSGD(learning_rate=LEARNING_RATE, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
-    # # _optimizer = tf.keras.optimizers.AlexSGD(learning_rate=LEARNING_RATE, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
-    # # 모델의 손실과 성능을 측정할 지표, 에포크가 진행되는 동안 수집된 측정 지표를 바탕으로 결과 출력
-    # train_loss = tf.keras.metrics.Mean(name= 'train_loss', dtype=tf.float32)
-    # train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
-    # test_loss = tf.keras.metrics.Mean(name='test_loss', dtype=tf.float32)
-    # test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='test_accuracy')
     
+    _optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
+    # _optimizer = tf.keras.optimizers.SGD(learning_rate=LEARNING_RATE, momentum=MOMENTUM, nesterov=True)
+    # 모델의 손실과 성능을 측정할 지표, 에포크가 진행되는 동안 수집된 측정 지표를 바탕으로 결과 출력
+    train_loss = tf.keras.metrics.Mean(name= 'train_loss', dtype=tf.float32)
+    train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
+    test_loss = tf.keras.metrics.Mean(name='test_loss', dtype=tf.float32)
+    test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='test_accuracy')
+    prev_test_accuracy = -1.
+    # NaN 발생이유 LR이 너무 높거나, 나쁜 초기화...
     """
     Tensorboard
 
@@ -299,10 +271,10 @@ if __name__ == "__main__":
     get_logdir: return the location of the exact directory that is named
                     according to the current time the training phase starts
     """
-
-    # root_logdir = os.path.join(filewriter_path, "logs\\fit\\")
-
-    # logdir = get_logdir(root_logdir)
+    root_logdir = os.path.join(filewriter_path, "logs\\fit\\")
+    logdir = get_logdir(root_logdir)
+    train_logdir = os.path.join(logdir, "train\\")
+    val_logdir = os.path.join(logdir, "val\\")
 
     """
     Training and Results
@@ -315,117 +287,163 @@ if __name__ == "__main__":
         - Learning Rate
     """
 
-    # summary_writer = tf.summary.create_file_writer(logdir)
+    train_summary_writer = tf.summary.create_file_writer(train_logdir)
+    val_summary_writer = tf.summary.create_file_writer(val_logdir)
     # tf.summary.trace_on(graph=True, profiler=True)
     
-    # print('tensorboard --logdir={}'.format(logdir))
+    print('tensorboard --logdir={}'.format(logdir))
 
     # _model.compile(optimizer=_optimizer, loss= loss_object, metrics=train_loss)
     # _model.fit(m_train_ds, epochs=NUM_EPOCHS, steps_per_epoch=20,
     #             batch_size=BATCH_SIZE, validation_batch_size=BATCH_SIZE, validation_data=m_test_ds)
     # _model.summary()
 
-    # with tf.device('/gpu:1'):
-    #     @tf.function
-    #     def train_step(train_model, images, labels):
-
-    #         with tf.GradientTape() as tape:
-
-    #             predictions = train_model.call(images, training=True)
-    #             loss = loss_object(labels, predictions)
-
-    #         gradients = tape.gradient(loss, train_model.trainable_variables)
-    #         #apply gradients 가 v1의 minimize를 대체함
-    #         _optimizer.apply_gradients(zip(gradients, train_model.trainable_variables))
-            
-    #         train_loss(loss)
-    #         train_accuracy(labels, predictions)
-    #         # train_accuracy.update_state(labels, predictions)
-
-    #     @tf.function
-    #     def test_step(test_model, images, labels):
-    #         predictions = test_model.call(images, training =False)
-    #         t_loss = loss_object(labels, predictions)
-    #         test_loss(t_loss)
-    #         test_accuracy(labels, predictions)
-    #         # test_accuracy.update_state(labels, predictions)
+    prev_test_accuracy = tf.Variable(-1., trainable = False)
     
-    # # p = multiprocessing.Pool(CPU_CORE)
+    with tf.device('/GPU:1'):
 
-    # print("시작")
-    # for epoch in range(NUM_EPOCHS):
-    #     start = time.perf_counter()
-    #     for step, tb in enumerate(train_ds):
+        @tf.function
+        def train_step(images, labels):
+            with tf.GradientTape() as tape:
+                predictions = _model(images, training = True)
+
+                loss = loss_object(labels, predictions)
             
-    #         raw_images= tb['image']
-    #         raw_labels= tb['label']
+            lr_var = _optimizer._decayed_lr(tf.float32)
+            decay_rate = learning_rate_fn.decay_rate
+            gradients = tape.gradient(loss, _model.trainable_variables)
+            #apply gradients 가 v1의 minimize를 대체함
+            _optimizer.apply_gradients(zip(gradients, _model.trainable_variables))
             
-    #         images = list()
-    #         labels = list()
+            train_loss(loss)
+            train_accuracy(labels, predictions)
 
-    #         for i in range(0,BATCH_SIZE):
-
+            tf.print(lr_var)
+            # loss type : tensor
                 
-    #             image = tf.image.decode_jpeg(raw_images[i], channels=3)
-
-    #             # cropped_image= p.starmap(image_cropping, [(image, True)])
-                
-    #             cropped_image = image_cropping(image, training=True)
-    #             for j in cropped_image:
-    #                 images.append(j)
-    #                 labels.append(raw_labels[i])
-
-    #         images = tf.stack(images)
-    #         labels = tf.stack(labels)
-            
-    #         train_step(_model, images, labels)
-    #         # print("Training Epoch:", epoch+1, " Training Step:",step)
-    #     with summary_writer.as_default():
-    #         tf.summary.scalar('train_loss', train_loss.result(), step=epoch+1)
-    #         tf.summary.scalar('train_accuracy', train_accuracy.result(), step=epoch+1)
-    #         tf.summary.scalar('learning_rate', _optimizer._decayed_lr(tf.float32), step=step)
-            
-    #     for step, tc in enumerate(test_ds):
-    #         raw_images= tc['image']
-    #         raw_labels= tc['label']
-            
-    #         images = list()
-    #         labels = list()
-    #         for i in range(0,BATCH_SIZE):
-    #             image = tf.image.decode_jpeg(raw_images[i], channels=3)
-
-    #             # intend_image = p.starmap(da.intensity_RGB, [(image)])
-    #             # cropped_image= p.starmap(image_cropping, [(image, False)])
-    #             # cropped_intend_image= p.starmap(image_cropping, [(intend_image, False)])
-
-    #             intend_image = da.intensity_RGB(image=image)   # test때만 적용
-    #             cropped_image = image_cropping(image, training=False)
-    #             cropped_intend_image = image_cropping(intend_image, training=False)
-
-    #             for j in cropped_image:
-    #                 images.append(j)
-    #                 labels.append(raw_labels[i])
-    #             for j in cropped_intend_image:
-    #                 images.append(j)
-    #                 labels.append(raw_labels[i])
-                
-    #         images = tf.stack(images)
-    #         labels = tf.stack(labels)
-            
-    #         test_step(_model, images, labels)
-    #         # print("Testing Epoch:", epoch+1, " Testing Step:",step)
-    #     with summary_writer.as_default():
-    #         tf.summary.scalar('test_loss', test_loss.result(), step=epoch+1)
-    #         tf.summary.scalar('test_accuracy', test_accuracy.result(), step=epoch+1)
-            
-    #     print('에포크: {}, 손실: {}, 정확도: {}, 테스트 손실: {}, 테스트 정확도: {}'.format(epoch+1,train_loss.result(),
-    #                         train_accuracy.result()*100, test_loss.result(),test_accuracy.result()*100))
+        # autograph 디버깅
+        # print(tf.autograph.to_code(train_step.python_function))
         
-    #     print("Epoch {} 의 총 소요시간: {}".format(epoch+1, time.perf_counter() - start))
+        @tf.function
+        def test_step(test_images, test_labels):
+            test_predictions = _model(test_images, training = False)
+            t_loss = loss_object(test_labels, test_predictions)
+            test_loss(t_loss)
+            test_accuracy(test_labels, test_predictions)
+        @tf.function
+        def performance_lr_scheduling():
+            # tf.cond(tf.less_equal(test_accuracy.result(),prev_test_accuracy.read_value()),
+            #     learning_rate_fn.cnt_up_num_of_statinary_loss,
+            #     lambda: None)
+            # prev_test_accuracy.assign(test_accuracy.result())
+            learning_rate_fn.cnt_up_num_of_statinary_loss()
+            
+    print("시작")
+    for epoch in range(NUM_EPOCHS):
+        start = time.perf_counter()
+        bar = progressbar.ProgressBar(max_value= math.ceil(train_buf_size/128.),  
+                              widgets=widgets)
+        test_bar = progressbar.ProgressBar(max_value= math.ceil(test_buf_size/128.),  
+        widgets=widgets)
+        bar.start()
+        test_bar.start()
 
-    #     train_loss.reset_states()
-    #     test_loss.reset_states()
-    #     train_accuracy.reset_states()
-    #     test_accuracy.reset_states()
+        for step, tb in enumerate(train_ds):
+            
+            raw_images= tb['image'].numpy()
+            raw_labels= tb['label'].numpy()
+            
+            images = list()
+            labels = list()
+            print("len", len(raw_labels))
+
+            for i in range(0,len(raw_labels)):
+
+                image = tf.image.decode_jpeg(raw_images[i], channels=3)
+                f_image = tf.cast(image, tf.float32)
+                label = tf.cast(raw_labels[i]-1, tf.int32)
+                intend_image = da.intensity_RGB(image=f_image)   # training 때만 적용
+
+                # TODO with cpu 멀티프로세싱 해주기
+                cropped_intend_image = image_cropping(intend_image, training=True)
+                # cropped_intend_image = examine_image_cropping(image)
+
+                for j in cropped_intend_image:
+                    
+                    images.append(j)
+                    labels.append(label)
+                
+                # images.append(cropped_intend_image)
+                # labels.append(label)
+            
+            images = tf.stack(images)
+            labels = tf.stack(labels)
+
+            train_batch_ds = tf.data.Dataset.from_tensor_slices((images, labels)).cache()
+            train_batch_ds = train_batch_ds.shuffle(buffer_size=len(labels)).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
+            
+            for batch_size_images, batch_size_labels in train_batch_ds:
+
+                train_step(batch_size_images, batch_size_labels)
+
+            # train_step(images, labels)
+            bar.update(step)
+
+        with train_summary_writer.as_default():
+            tf.summary.scalar('loss', train_loss.result(), step=epoch+1)
+            tf.summary.scalar('accuracy', train_accuracy.result()*100, step=epoch+1)
+            
+        for step, tc in enumerate(test_ds):
+            test_raw_images= tc['image'].numpy()
+            test_raw_labels= tc['label'].numpy()
+            
+            test_images = list()
+            test_labels = list()
+
+            print("len", len(test_raw_labels))
+
+            for i in range(0,len(test_raw_labels)):
+                test_image = tf.image.decode_jpeg(test_raw_images[i], channels=3)
+                test_label = tf.cast(test_raw_labels[i]-1, tf.int32)
+                # cropped_image= p.starmap(image_cropping, [(image, False)])
+                
+                # TODO with cpu 멀티프로세싱 해주기
+                test_cropped_image = image_cropping(test_image, training=False)
+                # cropped_image = examine_image_cropping(image)
+                
+                for k in test_cropped_image:
+                    test_images.append(k)
+                    test_labels.append(test_label)
+                # images.append(cropped_image)
+                # labels.append(label)
+            test_images = tf.stack(test_images)
+            test_labels = tf.stack(test_labels)
+            #####
+            batch_ds = tf.data.Dataset.from_tensor_slices((test_images, test_labels)).cache()
+            batch_ds = batch_ds.shuffle(buffer_size=len(test_labels)).batch(batch_size=BATCH_SIZE, drop_remainder=True).prefetch(AUTO)
+            
+            for batch_size_images, batch_size_labels in batch_ds:
+
+                test_step(batch_size_images, batch_size_labels)
+            ####
+            test_bar.update(step)
+            
+        with val_summary_writer.as_default():
+            tf.summary.scalar('loss', test_loss.result(), step=epoch+1)
+            tf.summary.scalar('accuracy', test_accuracy.result()*100, step=epoch+1)
+            
+        print('Epoch: {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}'.format(epoch+1,train_loss.result(),
+                            train_accuracy.result()*100, test_loss.result(),test_accuracy.result()*100))
         
-    # print("끝")
+        print("Spends time({}) in Epoch {}".format(epoch+1, time.perf_counter() - start))
+
+        if prev_test_accuracy >= test_accuracy.result():
+            performance_lr_scheduling()
+        prev_test_accuracy = test_accuracy.result()
+
+        train_loss.reset_states()
+        test_loss.reset_states()
+        train_accuracy.reset_states()
+        test_accuracy.reset_states()
+        
+    print("끝")
