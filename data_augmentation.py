@@ -8,7 +8,8 @@ import cv2
 ORIGINAL_IMAGE_SIZE = 256
 
 def image_aug(img = "img", evecs_mat= "evecs_mat", evals= "evals"):
-    img = img
+    img = tf.cast(img, tf.float32)
+    
     mu = 0
     sigma = 0.1
     evecs_mat = evecs_mat
@@ -38,7 +39,7 @@ def intensity_RGB(image= "image"):
 
     res = np.zeros(shape=(1,3))
     # re-shape to make list of RGB vectors.
-    arr=tf.reshape(image, shape=[(ORIGINAL_IMAGE_SIZE*ORIGINAL_IMAGE_SIZE),3])
+    arr=tf.reshape(image, shape=[(256*256),3])
     # consolidate RGB vectors of all images
     res = np.concatenate((res,arr),axis=0)
     res = np.delete(res, (0), axis=0)       # 0번째 쉘 지우기

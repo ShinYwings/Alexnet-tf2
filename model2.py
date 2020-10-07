@@ -21,24 +21,58 @@ class mulLayer(tf.keras.layers.Layer):
     def call(self, input):
         return tf.scalar_mul(self.weight_init,input)
 
+# def mAlexNet(INPUT_SHAPE, LRN_INFO, NUM_CLASSES):
+
+#         radius, alpha, beta, bias = LRN_INFO
+
+#         model = tf.keras.Sequential([
+#             tf.keras.layers.Conv2D(96, kernel_size=(11,11), input_shape = (INPUT_SHAPE,INPUT_SHAPE, 3),
+#                                                 strides=(4,4), padding="valid", 
+#                                                 activation='relu'),
+#             lrn(depth_radius=radius,bias=bias,alpha=alpha, beta=beta),
+#             tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid"),
+            
+
+#             tf.keras.layers.Conv2D(256,kernel_size=(5,5), strides=(1,1), padding="same",
+#                                                 activation='relu'),
+#             lrn(depth_radius=radius,bias=bias,alpha=alpha, beta=beta),
+#             tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid"),
+#             tf.keras.layers.Conv2D(384,kernel_size=(3,3), strides=(1,1), padding="same",
+#                                                 activation='relu'),
+#             tf.keras.layers.Conv2D(384,kernel_size=(3,3), strides=(1,1), padding="same",
+#                                                 activation='relu'),
+#             tf.keras.layers.Conv2D(256,kernel_size=(3,3), strides=(1,1), padding="same",
+#                                                 activation='relu'),
+#             tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid"),
+
+#             tf.keras.layers.Flatten(),
+#             tf.keras.layers.Dense(4096,activation='relu'),
+#             tf.keras.layers.Dropout(0.5),
+#             tf.keras.layers.Dense(4096, activation='relu'),
+#             tf.keras.layers.Dropout(0.5),
+#             tf.keras.layers.Dense(NUM_CLASSES, activation='softmax')
+#         ])
+        
+#         return model
+
 class mAlexNet(Model):
-    def __init__(self, LRN_INFO):
+    def __init__(self, INPUT_SHAPE, LRN_INFO, NUM_CLASSES):
 
         super(mAlexNet, self).__init__()
 
         self.radius, self.alpha, self.beta, self.bias = LRN_INFO
 
-        self.conv1 = tf.keras.layers.Conv2D(96, kernel_size=(11,11), input_shape = (227,227, 3),
+        self.conv1 = tf.keras.layers.Conv2D(96, kernel_size=(11,11), input_shape = (INPUT_SHAPE,INPUT_SHAPE, 3),
                                             strides=(4,4), padding="valid", 
-                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(0))
+                                            activation='relu')
         self.conv2 = tf.keras.layers.Conv2D(256,kernel_size=(5,5), strides=(1,1), padding="same",
-                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+                                            activation='relu')
         self.conv3 = tf.keras.layers.Conv2D(384,kernel_size=(3,3), strides=(1,1), padding="same",
-                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(0))
+                                            activation='relu')
         self.conv4 = tf.keras.layers.Conv2D(384,kernel_size=(3,3), strides=(1,1), padding="same",
-                                            activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+                                            activation='relu')
         self.conv5 = tf.keras.layers.Conv2D(256,kernel_size=(3,3), strides=(1,1), padding="same",
-                                            activation='relu',kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+                                            activation='relu')
         
         self.pool1 = tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid")
         self.pool2 = tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid")
@@ -47,17 +81,18 @@ class mAlexNet(Model):
         self.lrn1 = lrn(depth_radius=self.radius, alpha=self.alpha, beta=self.beta, bias=self.bias)
         self.lrn2 = lrn(depth_radius=self.radius, alpha=self.alpha, beta=self.beta, bias=self.bias)
         self.flatten = tf.keras.layers.Flatten()
-        self.fc1 = tf.keras.layers.Dense(4096,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.fc1 = tf.keras.layers.Dense(4096,activation='relu')
         self.dropout1 = tf.keras.layers.Dropout(0.5)
-        self.fc2 = tf.keras.layers.Dense(4096, activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.fc2 = tf.keras.layers.Dense(4096, activation='relu')
         self.dropout2 = tf.keras.layers.Dropout(0.5)
-
-        self.fc3 = tf.keras.layers.Dense(1000, activation='softmax', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
-
+        self.fc3 = tf.keras.layers.Dense(NUM_CLASSES, activation='softmax')
+        
         self.mul1 = mulLayer(weight_init=0.5)
         self.mul2 = mulLayer(weight_init=0.5)
-
+        
     def call(self, x, training=None):
+        
+        # assert type(training) is not bool, print("training must be a boolean type")
         
         # 1st layer
         cnv1 = self.conv1(x)
