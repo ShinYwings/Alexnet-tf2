@@ -17,11 +17,11 @@ import math
 
 TRAIN_IMAGE_DIR = r"D:\ILSVRC2012\ILSVRC2012_img_train"
 TEST_IMAGE_DIR = r"D:\ILSVRC2012\ILSVRC2012_img_val"
-TRAIN_TFREC_DIR = r"D:\ILSVRC2012\tfrecord_train"
-TEST_TFREC_DIR = r"D:\ILSVRC2012\tfrecord_val"
+TRAIN_TFREC_DIR = r"D:\ILSVRC2012\class10_q95_tfrecord_train"
+TEST_TFREC_DIR = r"D:\ILSVRC2012\class10_q95_tfrecord_val"
 TFRECORD_FILE_NAME= lambda name : '{}.tfrecord'.format(name)
 IMAGE_SIZE = 256
-IMAGE_ENCODING_QUALITY = 70  # default 95
+IMAGE_ENCODING_QUALITY = 95  # default 95
 TFRECORD_OPTION = tf.io.TFRecordOptions(compression_type="GZIP")
 
 def _int64_feature(value):
@@ -85,44 +85,51 @@ def parse_to_tfrecord(meta_data = "meta_data", splited_dir_list = "splited_dir_l
 
     for dir_path in splited_dir_list:
         
-        in_dir_path = os.path.join(image_dir, dir_path)
-
-        all_file_list = os.listdir(in_dir_path)
-
-        new_dir = os.path.join(tfrecord_dir, dir_path)
-      
-        if not os.path.isdir(new_dir):
-          print("new_dir", new_dir)
-          os.mkdir(new_dir)
-        os.chdir(new_dir)
-
         index = mdir.index(dir_path)
+
+        ###### class 10개 추려내는 작업
+        index = mindex[index]
         
-        for file_name in all_file_list[:100]:
-            
-            # if os.path.isfile(os.path.join(new_dir,TFRECORD_FILE_NAME(file_name.split(".")[0]))):
-            #   # print("already exists file name",file_name)
-            #   continue
-            # else:
-              file_path = os.path.join(in_dir_path, file_name)
-              with open(file_path, 'rb') as f:
-                  raw_image = f.read()
-                  original_image = tf.io.decode_jpeg(raw_image)
+        if 440 <= index and index < 450:
+        ######
 
-              image_bytes = convert_image_to_bytes(original_image)
+          in_dir_path = os.path.join(image_dir, dir_path)
 
-              if train:
-                with tf.io.TFRecordWriter(TFRECORD_FILE_NAME("train"), TFRECORD_OPTION) as writer:
-                  print("parsing train",file_name)
-                  example = serialize_ds(image_bytes, mindex[index])
-                  writer.write(example)
-                writer.close()
-              else:
-                with tf.io.TFRecordWriter(TFRECORD_FILE_NAME("test"), TFRECORD_OPTION) as writer:
-                  print("parsing test",file_name)
-                  example = serialize_ds(image_bytes, mindex[index])
-                  writer.write(example)
-                writer.close()
+          new_dir = os.path.join(tfrecord_dir, dir_path)
+
+          all_file_list = os.listdir(in_dir_path)
+
+          if not os.path.isdir(new_dir):
+            print("new_dir", new_dir)
+            os.mkdir(new_dir)
+          os.chdir(new_dir)
+
+          
+          for file_name in all_file_list:
+              
+              # if os.path.isfile(os.path.join(new_dir,TFRECORD_FILE_NAME(file_name.split(".")[0]))):
+              #   # print("already exists file name",file_name)
+              #   continue
+              # else:
+                file_path = os.path.join(in_dir_path, file_name)
+                with open(file_path, 'rb') as f:
+                    raw_image = f.read()
+                    original_image = tf.io.decode_jpeg(raw_image)
+
+                image_bytes = convert_image_to_bytes(original_image)
+
+                if train:
+                  with tf.io.TFRecordWriter(TFRECORD_FILE_NAME(file_name.split(".")[0]), TFRECORD_OPTION) as writer:
+                    print("parsing train",file_name)
+                    example = serialize_ds(image_bytes, index)
+                    writer.write(example)
+                  writer.close()
+                else:
+                  with tf.io.TFRecordWriter(TFRECORD_FILE_NAME(file_name.split(".")[0]), TFRECORD_OPTION) as writer:
+                    print("parsing test",file_name)
+                    example = serialize_ds(image_bytes, index)
+                    writer.write(example)
+                  writer.close()
         # else:
         #   print("already exists ", new_dir)    
 
@@ -136,94 +143,94 @@ if __name__ == "__main__":
   _dir, _index, _name = metadata
 
   #train
-  if not os.path.isdir(TRAIN_TFREC_DIR):
-      os.mkdir(TRAIN_TFREC_DIR)
-  os.chdir(TRAIN_TFREC_DIR)
-  train_dir_list = os.listdir(TRAIN_IMAGE_DIR)
-  print("train_dir_list",len(train_dir_list))
-  # parse_to_tfrecord(meta_data = metadata, splited_dir_list = train_dir_list, 
-  #                       tfrecord_dir= TRAIN_TFREC_DIR, train=True,  mdir = _dir,
-  #                         image_dir = TRAIN_IMAGE_DIR, mindex = _index)
-  split_number = math.ceil(len(train_dir_list) / 8)
-  train_splited_dir_list = [train_dir_list[x:x + split_number] for x in range(0, len(train_dir_list), split_number)]
+  # if not os.path.isdir(TRAIN_TFREC_DIR):
+  #     os.mkdir(TRAIN_TFREC_DIR)
+  # os.chdir(TRAIN_TFREC_DIR)
+  # train_dir_list = os.listdir(TRAIN_IMAGE_DIR)
+  # print("train_dir_list",len(train_dir_list))
+  # # parse_to_tfrecord(meta_data = metadata, splited_dir_list = train_dir_list, 
+  # #                       tfrecord_dir= TRAIN_TFREC_DIR, train=True,  mdir = _dir,
+  # #                         image_dir = TRAIN_IMAGE_DIR, mindex = _index)
+  # split_number = math.ceil(len(train_dir_list) / 4)
+  # train_splited_dir_list = [train_dir_list[x:x + split_number] for x in range(0, len(train_dir_list), split_number)]
 
-  p1 = Process(target=parse_to_tfrecord,
-              args=(metadata, train_splited_dir_list[0], 
-                TRAIN_TFREC_DIR, True, _dir,
-                  TRAIN_IMAGE_DIR, _index))
-  p2 = Process(target=parse_to_tfrecord,
-              args=(metadata, train_splited_dir_list[1], 
-                TRAIN_TFREC_DIR, True, _dir,
-                  TRAIN_IMAGE_DIR, _index))
-  p3 = Process(target=parse_to_tfrecord,
-              args=(metadata, train_splited_dir_list[2], 
-                TRAIN_TFREC_DIR, True, _dir,
-                  TRAIN_IMAGE_DIR, _index))
-  p4 = Process(target=parse_to_tfrecord,
-              args=(metadata, train_splited_dir_list[3], 
-                TRAIN_TFREC_DIR, True, _dir,
-                  TRAIN_IMAGE_DIR, _index))
-  p5 = Process(target=parse_to_tfrecord,
-              args=(metadata, train_splited_dir_list[4], 
-                TRAIN_TFREC_DIR, True, _dir,
-                  TRAIN_IMAGE_DIR, _index))
-  p6 = Process(target=parse_to_tfrecord,
-              args=(metadata, train_splited_dir_list[5], 
-                TRAIN_TFREC_DIR, True, _dir,
-                  TRAIN_IMAGE_DIR, _index))
-  p7 = Process(target=parse_to_tfrecord,
-              args=(metadata, train_splited_dir_list[6], 
-                TRAIN_TFREC_DIR, True, _dir,
-                  TRAIN_IMAGE_DIR, _index))
-  p8 = Process(target=parse_to_tfrecord,
-              args=(metadata, train_splited_dir_list[7], 
-                TRAIN_TFREC_DIR, True, _dir,
-                  TRAIN_IMAGE_DIR, _index))
-  p1.start()
-  p2.start()
-  p3.start()
-  p4.start()
-  p5.start()
-  p6.start()
-  p7.start()
-  p8.start()
+  # p1 = Process(target=parse_to_tfrecord,
+  #             args=(metadata, train_splited_dir_list[0], 
+  #               TRAIN_TFREC_DIR, True, _dir,
+  #                 TRAIN_IMAGE_DIR, _index))
+  # p2 = Process(target=parse_to_tfrecord,
+  #             args=(metadata, train_splited_dir_list[1], 
+  #               TRAIN_TFREC_DIR, True, _dir,
+  #                 TRAIN_IMAGE_DIR, _index))
+  # p3 = Process(target=parse_to_tfrecord,
+  #             args=(metadata, train_splited_dir_list[2], 
+  #               TRAIN_TFREC_DIR, True, _dir,
+  #                 TRAIN_IMAGE_DIR, _index))
+  # p4 = Process(target=parse_to_tfrecord,
+  #             args=(metadata, train_splited_dir_list[3], 
+  #               TRAIN_TFREC_DIR, True, _dir,
+  #                 TRAIN_IMAGE_DIR, _index))
+  # p5 = Process(target=parse_to_tfrecord,
+  #             args=(metadata, train_splited_dir_list[4], 
+  #               TRAIN_TFREC_DIR, True, _dir,
+  #                 TRAIN_IMAGE_DIR, _index))
+  # p6 = Process(target=parse_to_tfrecord,
+  #             args=(metadata, train_splited_dir_list[5], 
+  #               TRAIN_TFREC_DIR, True, _dir,
+  #                 TRAIN_IMAGE_DIR, _index))
+  # p7 = Process(target=parse_to_tfrecord,
+  #             args=(metadata, train_splited_dir_list[6], 
+  #               TRAIN_TFREC_DIR, True, _dir,
+  #                 TRAIN_IMAGE_DIR, _index))
+  # p8 = Process(target=parse_to_tfrecord,
+  #             args=(metadata, train_splited_dir_list[7], 
+  #               TRAIN_TFREC_DIR, True, _dir,
+  #                 TRAIN_IMAGE_DIR, _index))
+  # p1.start()
+  # p2.start()
+  # p3.start()
+  # p4.start()
+  # p5.start()
+  # p6.start()
+  # p7.start()
+  # p8.start()
 
-  p1.join()
-  p2.join()
-  p3.join()
-  p4.join()
-  p5.join()
-  p6.join()
-  p7.join()
-  p8.join()
+  # p1.join()
+  # p2.join()
+  # p3.join()
+  # p4.join()
+  # p5.join()
+  # p6.join()
+  # p7.join()
+  # p8.join()
 
   
   #test
-  # if not os.path.isdir(TEST_TFREC_DIR):
-  #     os.mkdir(TEST_TFREC_DIR)
-  # os.chdir(TEST_TFREC_DIR)
+  if not os.path.isdir(TEST_TFREC_DIR):
+      os.mkdir(TEST_TFREC_DIR)
+  os.chdir(TEST_TFREC_DIR)
 
-  # val_dir_list = os.listdir(TEST_IMAGE_DIR)
+  val_dir_list = os.listdir(TEST_IMAGE_DIR)
   
-  # split_number = math.ceil(len(val_dir_list) / 5)
-  # test_splited_dir_list = [val_dir_list[x:x + split_number] for x in range(0, len(val_dir_list), split_number)]
+  split_number = math.ceil(len(val_dir_list) / 5)
+  test_splited_dir_list = [val_dir_list[x:x + split_number] for x in range(0, len(val_dir_list), split_number)]
 
-  # tp1 = Process(target=parse_to_tfrecord,
-  #             args=(metadata, test_splited_dir_list[0], 
-  #               TEST_TFREC_DIR, False, _dir,
-  #                 TEST_IMAGE_DIR, _index))
-  # tp2 = Process(target=parse_to_tfrecord,
-  #             args=(metadata, test_splited_dir_list[1], 
-  #               TEST_TFREC_DIR, False, _dir,
-  #                 TEST_IMAGE_DIR, _index))
-  # tp3 = Process(target=parse_to_tfrecord,
-  #             args=(metadata, test_splited_dir_list[2], 
-  #               TEST_TFREC_DIR, False, _dir,
-  #                 TEST_IMAGE_DIR, _index))
-  # tp4 = Process(target=parse_to_tfrecord,
-  #             args=(metadata, test_splited_dir_list[3], 
-  #               TEST_TFREC_DIR, False, _dir,
-  #                 TEST_IMAGE_DIR, _index))
+  tp1 = Process(target=parse_to_tfrecord,
+              args=(metadata, test_splited_dir_list[0], 
+                TEST_TFREC_DIR, False, _dir,
+                  TEST_IMAGE_DIR, _index))
+  tp2 = Process(target=parse_to_tfrecord,
+              args=(metadata, test_splited_dir_list[1], 
+                TEST_TFREC_DIR, False, _dir,
+                  TEST_IMAGE_DIR, _index))
+  tp3 = Process(target=parse_to_tfrecord,
+              args=(metadata, test_splited_dir_list[2], 
+                TEST_TFREC_DIR, False, _dir,
+                  TEST_IMAGE_DIR, _index))
+  tp4 = Process(target=parse_to_tfrecord,
+              args=(metadata, test_splited_dir_list[3], 
+                TEST_TFREC_DIR, False, _dir,
+                  TEST_IMAGE_DIR, _index))
   # tp5 = Process(target=parse_to_tfrecord,
   #             args=(metadata, test_splited_dir_list[4], 
   #               TEST_TFREC_DIR, False, _dir,
@@ -240,10 +247,10 @@ if __name__ == "__main__":
   #             args=(metadata, test_splited_dir_list[7], 
   #               TEST_TFREC_DIR, False, _dir,
   #                 TEST_IMAGE_DIR, _index))                                
-  # tp1.start()
-  # tp2.start()
-  # tp3.start()
-  # tp4.start()
+  tp1.start()
+  tp2.start()
+  tp3.start()
+  tp4.start()
   # tp5.start()
   # tp6.start()
   # tp7.start()

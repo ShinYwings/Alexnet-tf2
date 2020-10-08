@@ -104,10 +104,28 @@ def _parse_function(images, labels):
 
     return images, labels
 
+def get_logdir(root_logdir):
+    run_id = dt.now().strftime("run_%Y_%m_%d-%H_%M_%S")
+    
+    return os.path.join(root_logdir, run_id)
+
 if __name__ == "__main__":
     
     root_dir=os.getcwd()
     sys.path.append(root_dir)
+    """Path for tf.summary.FileWriter and to store model checkpoints"""
+    filewriter_path = os.path.join(root_dir, "tensorboard")
+    checkpoint_path = os.path.join(root_dir, "checkpoints")
+    """Create parent path if it doesn't exist"""
+    if not os.path.isdir(checkpoint_path):
+        os.mkdir(checkpoint_path)
+
+    if not os.path.isdir(filewriter_path):
+        os.mkdir(filewriter_path)
+    root_logdir = os.path.join(filewriter_path, "logs\\fit\\")
+    logdir = get_logdir(root_logdir)
+    train_logdir = os.path.join(logdir, "train\\")
+    val_logdir = os.path.join(logdir, "val\\") 
 
     (ds_train, ds_test), ds_info = tfds.load(
         'mnist',
@@ -138,7 +156,10 @@ if __name__ == "__main__":
     test_loss = tf.keras.metrics.Mean(name='test_loss', dtype=tf.float32)
     test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='test_accuracy')
     
-    prev_test_accuracy = tf.Variable(-1., trainable = False)
+    train_summary_writer = tf.summary.create_file_writer(train_logdir)
+    val_summary_writer = tf.summary.create_file_writer(val_logdir)
+
+    prev_test_accuracy = -1.
 
     with tf.device('/GPU:1'):
         @tf.function
@@ -210,7 +231,6 @@ if __name__ == "__main__":
                 t.start()
                 
                 for batch_size_images, batch_size_labels in train_batch_ds:
-                    print("in train_step",step)
                     train_step(batch_size_images, batch_size_labels)
                 t.join()
         # Last step
@@ -222,7 +242,10 @@ if __name__ == "__main__":
         for batch_size_images, batch_size_labels in train_batch_ds:
                     
             train_step(batch_size_images, batch_size_labels)
-        
+        with train_summary_writer.as_default():
+            tf.summary.scalar('loss', train_loss.result(), step=epoch+1)
+            tf.summary.scalar('accuracy', train_accuracy.result()*100, step=epoch+1)
+
         # train_images = list()
             # train_labels = list()
 
@@ -264,7 +287,6 @@ if __name__ == "__main__":
                 t = threading.Thread(target=testtt, args=(q2, images, labels))
                 t.start()
                 for batch_test_images, batch_test_labels in test_batch_ds:
-                    print("in test_step",step)
                     test_step(batch_test_images, batch_test_labels)
                 t.join()
         # Last step
@@ -276,7 +298,10 @@ if __name__ == "__main__":
         for batch_test_images, batch_test_labels in test_batch_ds:
                     
             test_step(batch_test_images, batch_test_labels)
-
+        with val_summary_writer.as_default():
+            tf.summary.scalar('loss', test_loss.result(), step=epoch+1)
+            tf.summary.scalar('accuracy', test_accuracy.result()*100, step=epoch+1)
+            
         print('Epoch: {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}'.format(epoch+1,train_loss.result(),
                             train_accuracy.result()*100, test_loss.result(),test_accuracy.result()*100))
         

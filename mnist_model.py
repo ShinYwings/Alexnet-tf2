@@ -28,22 +28,22 @@ class myModel(Model):
 
         self.radius, self.alpha, self.beta, self.bias = LRN_INFO
 
-        self.conv1 = tf.keras.layers.Conv2D(96, kernel_size=(11,11), input_shape = (227,227, 3),
-                                            strides=(4,4), padding="valid", 
+        self.conv1 = tf.keras.layers.Conv2D(96, kernel_size=(4,4), input_shape = (28,28, 1),
+                                            strides=(2,2), padding="valid", 
                                             activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(0))
-        self.conv2 = tf.keras.layers.Conv2D(256,kernel_size=(3,3), strides=(2,2), padding="same",
-                                            activation='relu')
+        # self.conv2 = tf.keras.layers.Conv2D(256,kernel_size=(3,3), strides=(2,2), padding="same",
+        #                                     activation='relu')
 
         self.pool1 = tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid")
-        self.pool2 = tf.keras.layers.MaxPool2D(pool_size=(3,3), strides=(2,2), padding="valid")
 
         self.lrn1 = lrn(depth_radius=self.radius, alpha=self.alpha, beta=self.beta, bias=self.bias)
-        self.lrn2 = lrn(depth_radius=self.radius, alpha=self.alpha, beta=self.beta, bias=self.bias)
 
         self.flatten = tf.keras.layers.Flatten()
-        self.fc1 = tf.keras.layers.Dense(4096,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.fc1 = tf.keras.layers.Dense(128,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
         self.dropout1 = tf.keras.layers.Dropout(0.5)
-        self.fc3 = tf.keras.layers.Dense(1000, activation='softmax', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.fc2 = tf.keras.layers.Dense(128,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.dropout2 = tf.keras.layers.Dropout(0.5)
+        self.fc3 = tf.keras.layers.Dense(10, activation='softmax', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
         
         self.mul1 = mulLayer(weight_init=0.5)
         
@@ -57,9 +57,9 @@ class myModel(Model):
         mp1 = self.pool1(lrn1)
         
         # # 2nd layer
-        cnv2 = self.conv2(mp1)
-        lrn2 = self.lrn2(cnv2)
-        mp2 = self.pool2(lrn2)
+        # cnv2 = self.conv2(mp1)
+        # lrn2 = self.lrn2(cnv2)
+        # mp2 = self.pool2(lrn2)
 
         # # 3rd layer
         # cnv3 = self.conv3(mp2)
@@ -71,11 +71,11 @@ class myModel(Model):
         # cnv5 = self.conv5(cnv4)
         # mp3 = self.pool3(cnv5)
         
-        ft = self.flatten(mp2)
+        ft = self.flatten(mp1)
         fcl1 = self.fc1(ft)
         if training:
             do1 = self.dropout1(fcl1, training= training)
-            # fcl2 = self.fc2(do1)
+            # fcl2 = self.fc2(fcl1)
             # do2 = self.dropout2(fcl2, training= training)
             
             fcl3 = self.fc3(do1)
