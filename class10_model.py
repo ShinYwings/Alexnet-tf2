@@ -13,13 +13,13 @@ class lrn(tf.keras.layers.Layer):
     def call(self, input):
         return tf.nn.local_response_normalization(input, depth_radius=self.depth_radius, bias=self.bias, alpha= self.alpha, beta= self.beta)
 
-# class mulLayer(tf.keras.layers.Layer):
-#     def __init__(self, weight_init="weight_init"):
-#         super(mulLayer, self).__init__()
-#         self.weight_init = weight_init
+class mulLayer(tf.keras.layers.Layer):
+    def __init__(self, weight_init="weight_init"):
+        super(mulLayer, self).__init__()
+        self.weight_init = weight_init
 
-#     def call(self, input):
-#         return tf.scalar_mul(self.weight_init,input)
+    def call(self, input):
+        return tf.scalar_mul(self.weight_init,input)
 
 class mAlexNet(Model):
     def __init__(self, LRN_INFO, NUM_CLASSES):
@@ -54,8 +54,8 @@ class mAlexNet(Model):
 
         self.fc3 = tf.keras.layers.Dense(NUM_CLASSES, activation='softmax', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
 
-        # self.mul1 = mulLayer(weight_init=0.5)
-        # self.mul2 = mulLayer(weight_init=0.5)
+        self.mul1 = mulLayer(weight_init=0.5)
+        self.mul2 = mulLayer(weight_init=0.5)
 
     def call(self, x, training=None):
         
@@ -81,17 +81,17 @@ class mAlexNet(Model):
         
         ft = self.flatten(mp3)
         fcl1 = self.fc1(ft)
-        # if training:
-        do1 = self.dropout1(fcl1, training= training)
-        fcl2 = self.fc2(do1)
-        do2 = self.dropout2(fcl2, training= training)
-        fcl3 = self.fc3(do2)
+        if training:
+            do1 = self.dropout1(fcl1, training= training)
+            fcl2 = self.fc2(do1)
+            do2 = self.dropout2(fcl2, training= training)
+            fcl3 = self.fc3(do2)
 
-        # else:
-        #     # multiply their outputs by 0.5
-        #     mul1 = self.mul1(fcl1)
-        #     fcl2 = self.fc2(mul1)
-        #     mul2 = self.mul2(fcl2)
-        #     fcl3 = self.fc3(mul2)
+        else:
+            # multiply their outputs by 0.5
+            mul1 = self.mul1(fcl1)
+            fcl2 = self.fc2(mul1)
+            mul2 = self.mul2(fcl2)
+            fcl3 = self.fc3(mul2)
 
         return fcl3

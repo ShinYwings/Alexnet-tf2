@@ -44,6 +44,7 @@ class mAlexNet(Model):
 
         self.bn1 = tf.keras.layers.BatchNormalization()
         self.bn2 = tf.keras.layers.BatchNormalization()
+        self.bn3 = tf.keras.layers.BatchNormalization()
 
         self.flatten = tf.keras.layers.Flatten()
         self.fc1 = tf.keras.layers.Dense(4096,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
@@ -77,8 +78,9 @@ class mAlexNet(Model):
         # 5th layer
         cnv5 = self.conv5(cnv4)
         mp3 = self.pool3(cnv5)
-        
-        ft = self.flatten(mp3)
+        bn3 = self.bn3(mp3)
+
+        ft = self.flatten(bn3)
         fcl1 = self.fc1(ft)
         if training:
             do1 = self.dropout1(fcl1, training= training)

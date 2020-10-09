@@ -28,8 +28,8 @@ def image_aug(img = "img", evecs_mat= "evecs_mat", evals= "evals"):
     a1= np.random.normal(mu, sigma)    # random variable은 main함수에다 해줘야함X 
     a2 = np.random.normal(mu, sigma)   # 한 이미지가 트레이닝 한번 할때만 하는거니까
     a3= np.random.normal(mu, sigma)
-    se[0] = a1* evals[0] 
-    se[1] = a2* evals[1] 
+    se[0] = a1* evals[0]
+    se[1] = a2* evals[1]
     se[2] = a3* evals[2]
     se = np.matrix(se)
     I = tf.matmul(feature_vec, se.T)

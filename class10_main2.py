@@ -24,6 +24,7 @@ DATASET_DIR = r"D:\ILSVRC2012"
 
 # Input으로 넣을 데이터 선택
 # q95 할때 잘못해서 index+1 되어잇음, 1 더 빼야함
+indexsub = 441
 RUN_TRAIN_DATASET =  r"D:\ILSVRC2012\class10_q95_tfrecord_train"
 RUN_TEST_DATASET = r"D:\ILSVRC2012\class10_q95_tfrecord_val"
 # hands-on 에서는 r=2 a = 0.00002, b = 0.75, k =1 이라고 되어있음... 
@@ -66,16 +67,22 @@ def image_cropping(image , training = None):  # do it only in test time
 
     if training:
 
-        intend_image = da.intensity_RGB(image=image)
-        
-        horizental_fliped_image = tf.image.flip_left_right(intend_image)
+        # standardization 하고 해야할 것같음... 먼저하니까 255 넘어가서 업뎃이 안됨
+        # intend_image = da.intensity_RGB(image=image)
+        image
 
-        ran_crop_image1 = tf.image.random_crop(intend_image,size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
+        horizental_fliped_image = tf.image.flip_left_right(image)
+
+        ran_crop_image1 = tf.image.random_crop(image,size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
         ran_crop_image2 = tf.image.random_crop(horizental_fliped_image, 
                                     size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
 
-        cropped_images.append(tf.subtract(ran_crop_image1, IMAGENET_MEAN)/ 255.)
-        cropped_images.append(tf.subtract(ran_crop_image2, IMAGENET_MEAN)/ 255.)
+        # cropped_images.append(tf.subtract(ran_crop_image1, IMAGENET_MEAN)/ 255.)
+        # cropped_images.append(tf.subtract(ran_crop_image2, IMAGENET_MEAN)/ 255.)
+        test1 = da.intensity_RGB(tf.subtract(ran_crop_image1, IMAGENET_MEAN))
+        test2 = da.intensity_RGB(tf.subtract(ran_crop_image2, IMAGENET_MEAN))
+        cropped_images.append(tf.image.per_image_standardization(test1))
+        cropped_images.append(tf.image.per_image_standardization(test2))
         
     else:
         
@@ -87,11 +94,11 @@ def image_cropping(image , training = None):  # do it only in test time
         bottomright = image[29:,29:]
         center = image[15:242, 15:242]
 
-        cropped_images.append(tf.subtract(topleft, IMAGENET_MEAN)/ 255.)
-        cropped_images.append(tf.subtract(topright, IMAGENET_MEAN)/ 255.)
-        cropped_images.append(tf.subtract(bottomleft, IMAGENET_MEAN)/ 255.)
-        cropped_images.append(tf.subtract(bottomright, IMAGENET_MEAN)/ 255.)
-        cropped_images.append(tf.subtract(center, IMAGENET_MEAN)/ 255.)
+        cropped_images.append(tf.image.per_image_standardization(tf.subtract(topleft, IMAGENET_MEAN)))
+        cropped_images.append(tf.image.per_image_standardization(tf.subtract(topright, IMAGENET_MEAN)))
+        cropped_images.append(tf.image.per_image_standardization(tf.subtract(bottomleft, IMAGENET_MEAN)))
+        cropped_images.append(tf.image.per_image_standardization(tf.subtract(bottomright, IMAGENET_MEAN)))
+        cropped_images.append(tf.image.per_image_standardization(tf.subtract(center, IMAGENET_MEAN)))
         
         # for horizental_fliped_image
         horizental_fliped_image_topleft = horizental_fliped_image[:227,:227]
@@ -100,11 +107,11 @@ def image_cropping(image , training = None):  # do it only in test time
         horizental_fliped_image_bottomright = horizental_fliped_image[29:,29:]
         horizental_fliped_image_center = horizental_fliped_image[15:242, 15:242]
 
-        cropped_images.append(tf.subtract(horizental_fliped_image_topleft, IMAGENET_MEAN)/ 255.)
-        cropped_images.append(tf.subtract(horizental_fliped_image_topright, IMAGENET_MEAN)/ 255.)
-        cropped_images.append(tf.subtract(horizental_fliped_image_bottomleft, IMAGENET_MEAN)/ 255.)
-        cropped_images.append(tf.subtract(horizental_fliped_image_bottomright, IMAGENET_MEAN)/ 255.)
-        cropped_images.append(tf.subtract(horizental_fliped_image_center, IMAGENET_MEAN)/ 255.)
+        cropped_images.append(tf.image.per_image_standardization(tf.subtract(horizental_fliped_image_topleft, IMAGENET_MEAN)))
+        cropped_images.append(tf.image.per_image_standardization(tf.subtract(horizental_fliped_image_topright, IMAGENET_MEAN)))
+        cropped_images.append(tf.image.per_image_standardization(tf.subtract(horizental_fliped_image_bottomleft, IMAGENET_MEAN)))
+        cropped_images.append(tf.image.per_image_standardization(tf.subtract(horizental_fliped_image_bottomright, IMAGENET_MEAN)))
+        cropped_images.append(tf.image.per_image_standardization(tf.subtract(horizental_fliped_image_center, IMAGENET_MEAN)))
     
     return cropped_images
 
@@ -127,7 +134,7 @@ def _parse_function(example_proto):
     image = tf.image.decode_jpeg(raw_image, channels=3)
     image = tf.cast(image, tf.float32)
     #440은 imgnet metadata 상에 나와있는 index number 임. index 0부터 시작하게 만들려고 뺌
-    label = tf.cast(tf.subtract(label,441), tf.int32)    
+    label = tf.cast(tf.subtract(label,indexsub), tf.int32)    
     return image, label
 
 if __name__ == "__main__":

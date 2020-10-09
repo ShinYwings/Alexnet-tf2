@@ -4,7 +4,6 @@ import os
 import sys
 import class10_model as model
 import time
-import data_augmentation as da
 from datetime import datetime as dt
 from matplotlib import pyplot as plt
 import optimizer_alexnet
@@ -14,7 +13,7 @@ import progressbar
 import math
 
 # Hyper parameters
-LEARNING_RATE = 0.01
+LEARNING_RATE = 0.02
 NUM_EPOCHS = 90
 NUM_CLASSES = 10    # IMAGENET 2012   # 모델에는 따로 선언해줌
 MOMENTUM = 0.9 # SGD + MOMENTUM
@@ -23,14 +22,16 @@ BATCH_SIZE = 64 # 128 batches occurs OOM in my computer
 DATASET_DIR = r"D:\ILSVRC2012"
 
 # Input으로 넣을 데이터 선택
-RUN_TRAIN_DATASET =  r"D:\ILSVRC2012\10class_q95_tfrecord_train"
-RUN_TEST_DATASET = r"D:\ILSVRC2012\10class_q95_tfrecord_val"
+# indexsub = 440
+indexsub = 441    # q95로 하면 1 더 빼줌
+RUN_TRAIN_DATASET =  r"D:\ILSVRC2012\class10_q95_tfrecord_train"
+RUN_TEST_DATASET = r"D:\ILSVRC2012\class10_q95_tfrecord_val"
+
 # hands-on 에서는 r=2 a = 0.00002, b = 0.75, k =1 이라고 되어있음... 
 # 문서에는 5, 1e-4, 0.75 2
-LRN_INFO = (2, 2e-05, 0.75, 1) # radius, alpha, beta, bias   
+LRN_INFO = (5, 1e-04, 0.75, 2) # radius, alpha, beta, bias   
 INPUT_IMAGE_SIZE = 227 #WIDTH, HEIGHT    # cropped by 256x256 images
 WEIGHT_DECAY = 5e-4
-
 # Fixed
 IMAGENET_MEAN = [122.10927936917298, 116.5416959998387, 102.61744377213829] # rgb format
 ENCODING_STYLE = "utf-8"
@@ -65,20 +66,20 @@ def image_cropping(image , training = None):  # do it only in test time
 
     if training:
 
-        intend_image = da.intensity_RGB(image=image)
+        intend_image = image
         
         horizental_fliped_image = tf.image.flip_left_right(intend_image)
 
         ran_crop_image1 = tf.image.random_crop(intend_image,size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
         ran_crop_image2 = tf.image.random_crop(horizental_fliped_image, 
                                     size=[INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3])
-
         cropped_images.append(tf.subtract(ran_crop_image1, IMAGENET_MEAN))
         cropped_images.append(tf.subtract(ran_crop_image2, IMAGENET_MEAN))
         
     else:
         
         horizental_fliped_image = tf.image.flip_left_right(image)
+
         # for original image
         topleft = image[:227,:227]
         topright = image[29:,:227]
@@ -126,7 +127,7 @@ def _parse_function(example_proto):
     image = tf.image.decode_jpeg(raw_image, channels=3)
     image = tf.cast(image, tf.float32)
     #440은 imgnet metadata 상에 나와있는 index number 임. index 0부터 시작하게 만들려고 뺌
-    label = tf.cast(tf.subtract(label,440), tf.int32)    
+    label = tf.cast(tf.subtract(label,indexsub), tf.int32)
     return image, label
 
 if __name__ == "__main__":
@@ -205,15 +206,16 @@ if __name__ == "__main__":
 
     learning_rate_fn = optimizer_alexnet.AlexNetLRSchedule(initial_learning_rate = LEARNING_RATE, name="performance_lr")
     _optimizer = optimizer_alexnet.AlexSGD(learning_rate=learning_rate_fn, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY, name="alexnetOp")
-    # _optimizer = tf.keras.optimizers.Adam()
 
     _model = model.mAlexNet(LRN_INFO, NUM_CLASSES)
     # 모델의 손실과 성능을 측정할 지표, 에포크가 진행되는 동안 수집된 측정 지표를 바탕으로 결과 출력
     loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
     train_loss = tf.keras.metrics.Mean(name= 'train_loss', dtype=tf.float32)
     train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
+    top5_train_accuracy = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='top5_train_accuracy')
     test_loss = tf.keras.metrics.Mean(name='test_loss', dtype=tf.float32)
     test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='test_accuracy')
+    top5_test_accuracy = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='top5_test_accuracy')
     
     # NaN 발생이유 LR이 너무 높거나, 나쁜 초기화...
     
@@ -239,6 +241,7 @@ if __name__ == "__main__":
 
             train_loss(loss)
             train_accuracy(labels, predictions)
+            top5_train_accuracy(labels, predictions)
 
         @tf.function
         def test_step(test_images, test_labels):
@@ -247,19 +250,12 @@ if __name__ == "__main__":
 
             test_loss(t_loss)
             test_accuracy(test_labels, test_predictions)
+            top5_test_accuracy(test_labels, test_predictions)
                 # tf.cond(tf.less_equal(test_accuracy.result(),prev_test_accuracy.read_value()),
                 #     learning_rate_fn.cnt_up_num_of_statinary_loss,
                 #     lambda: None)
                 # prev_test_accuracy.assign(test_accuracy.result())
-
-                
-                # cm = sklearn.metrics.confusion_matrix(test_labels, test_predictions)
-                # figure = plot_confusion_matrix(cm, class_names=test_labels)
-                # cm_image = plot_to_image(figure)
-
-                # with train_summary_writer.as_default():
-                #     tf.summary.image("Confusion Matrix", cm_image, step=epoch)
-        
+                #         
     @tf.function
     def performance_lr_scheduling():
         learning_rate_fn.cnt_up_num_of_statinary_loss()
@@ -273,10 +269,11 @@ if __name__ == "__main__":
         test_loss.reset_states()
         train_accuracy.reset_states()
         test_accuracy.reset_states()
+        top5_train_accuracy.reset_states()
+        top5_test_accuracy.reset_states()
         
         bar = progressbar.ProgressBar(max_value= math.ceil(train_buf_size/BATCH_SIZE), widgets=widgets)
-        test_bar = progressbar.ProgressBar(max_value= math.ceil(test_buf_size/BATCH_SIZE),  
-        widgets=widgets)
+        test_bar = progressbar.ProgressBar(max_value= math.ceil(test_buf_size/BATCH_SIZE), widgets=widgets)
         bar.start()
         test_bar.start()
 
@@ -319,6 +316,7 @@ if __name__ == "__main__":
         with train_summary_writer.as_default():
             tf.summary.scalar('loss', train_loss.result(), step=epoch+1)
             tf.summary.scalar('accuracy', train_accuracy.result()*100, step=epoch+1)
+            tf.summary.scalar('top5_accuracy', top5_train_accuracy.result()*100, step=epoch+1)
 
         q2 = list()
         isFirst = True
@@ -342,6 +340,7 @@ if __name__ == "__main__":
                 t.join()
 
             test_bar.update(step)
+
         # Last step
         test_images, test_labels = q2.pop()
         batch_length = len(test_labels)
@@ -355,8 +354,9 @@ if __name__ == "__main__":
         with val_summary_writer.as_default():
             tf.summary.scalar('loss', test_loss.result(), step=epoch+1)
             tf.summary.scalar('accuracy', test_accuracy.result()*100, step=epoch+1)
-        print('Epoch: {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}'.format(epoch+1,train_loss.result(),
-                            train_accuracy.result()*100, test_loss.result(),test_accuracy.result()*100))
+            tf.summary.scalar('top5_accuracy', top5_test_accuracy.result()*100, step=epoch+1)
+        print('Epoch: {}, Loss: {}, Accuracy: {}, top5_train_accuracy: {}, Test Loss: {}, Test Accuracy: {}, top5 Test Accuracy: {}'.format(epoch+1,train_loss.result(),
+                            train_accuracy.result()*100, top5_train_accuracy.result()*100, test_loss.result(),test_accuracy.result()*100, top5_test_accuracy.result()*100))
         
         print("Spends time({}) in Epoch {}".format(epoch+1, time.perf_counter() - start))
 
