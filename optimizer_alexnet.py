@@ -27,10 +27,15 @@ class AlexNetLRSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
         
         self.initial_learning_rate = initial_learning_rate
         self.decay_rate = tf.Variable(0., trainable=False)
+        self.decay_termination = False
         self.name = name
         
     def cnt_up_num_of_statinary_loss(self):
         self.decay_rate.assign_add(1., use_locking=True)
+    
+    def turn_on_last_epoch_loss(self):
+        self.decay_termination = True
+
     def __call__(self, step):
         with ops.name_scope_v2(self.name or "AlexNetLRSchedule"):
             
@@ -49,7 +54,7 @@ class AlexNetLRSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
             # TODO 종료전 3배 감소 근데 termination의 정의가 헷갈림...     
             def op_last_step_decay(): return math_ops.div(initial_learning_rate, 3.0*tt)
             def op_loss_stationary_decay(): return math_ops.div(initial_learning_rate, tt)
-            return control_flow_ops.cond(tf.equal(global_step, 127.), op_last_step_decay, op_loss_stationary_decay)
+            return control_flow_ops.cond(tf.equal(self.decay_termination, True), op_last_step_decay, op_loss_stationary_decay)
             
             # return math_ops.div(initial_learning_rate, tt)
     

@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import sys
-import class10_model as model
+import class3_model as model
 import time
 from datetime import datetime as dt
 from matplotlib import pyplot as plt
@@ -13,7 +13,7 @@ import progressbar
 import math
 
 # Hyper parameters
-LEARNING_RATE = 0.02
+LEARNING_RATE = 0.01
 NUM_EPOCHS = 90
 NUM_CLASSES = 10    # IMAGENET 2012   # 모델에는 따로 선언해줌
 MOMENTUM = 0.9 # SGD + MOMENTUM
@@ -208,9 +208,9 @@ if __name__ == "__main__":
                  합니다. (디스크에서 데이터를 읽고 전처리)
     """
 
-    learning_rate_fn = optimizer_alexnet.AlexNetLRSchedule(initial_learning_rate = LEARNING_RATE, name="performance_lr")
-    _optimizer = optimizer_alexnet.AlexSGD(learning_rate=learning_rate_fn, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY, name="alexnetOp")
-    # _optimizer = tf.keras.optimizers.Adam()
+    # learning_rate_fn = optimizer_alexnet.AlexNetLRSchedule(initial_learning_rate = LEARNING_RATE, name="performance_lr")
+    # _optimizer = optimizer_alexnet.AlexSGD(learning_rate=learning_rate_fn, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY, name="alexnetOp")
+    _optimizer = tf.keras.optimizers.Adam()
 
     _model = model.mAlexNet(LRN_INFO, NUM_CLASSES)
     # 모델의 손실과 성능을 측정할 지표, 에포크가 진행되는 동안 수집된 측정 지표를 바탕으로 결과 출력
@@ -233,16 +233,19 @@ if __name__ == "__main__":
 
     with tf.device('/GPU:1'):
         @tf.function
-        def train_step(images, labels):
+        def train_step(step, images, labels):
 
             with tf.GradientTape() as tape:
 
                 ft, ft2, predictions = _model(images, training = True)
                 loss = loss_object(labels, predictions)
-            tf.print(tf.math.reduce_max(ft), tf.math.reduce_min(ft))
-            tf.print(tf.math.reduce_max(ft2), tf.math.reduce_min(ft2))
-            tf.print(tf.math.reduce_max(predictions), tf.math.reduce_min(predictions))
-            tf.print("===================")
+            
+            tf.print("IN TRAIN STEP", step, ":", tf.shape(ft), tf.shape(ft2))
+            # tf.print("bn1", tf.math.reduce_mean(ft), tf.math.reduce_variance(ft))
+            # tf.print("bn2", tf.math.reduce_mean(ft2), tf.math.reduce_variance(ft2))
+            tf.print("bn1", ft, ft2)
+            # tf.print("bn2", ft, ft2[1])
+            tf.print("============")
             gradients = tape.gradient(loss, _model.trainable_variables)
             #apply gradients 가 v1의 minimize를 대체함
             _optimizer.apply_gradients(zip(gradients, _model.trainable_variables))
@@ -263,13 +266,13 @@ if __name__ == "__main__":
                 #     lambda: None)
                 # prev_test_accuracy.assign(test_accuracy.result())
                 
-    @tf.function
-    def performance_lr_scheduling():
-        learning_rate_fn.cnt_up_num_of_statinary_loss()
+    # @tf.function
+    # def performance_lr_scheduling():
+    #     learning_rate_fn.cnt_up_num_of_statinary_loss()
 
-    @tf.function
-    def termination_lr_scheduling():
-        learning_rate_fn.turn_on_last_epoch_loss()
+    # @tf.function
+    # def termination_lr_scheduling():
+    #     learning_rate_fn.turn_on_last_epoch_loss()
 
     print("시작")
     for epoch in range(NUM_EPOCHS):
@@ -307,11 +310,11 @@ if __name__ == "__main__":
                 t = threading.Thread(target=img_preprocessing, args=(q, images, labels, True))
                 t.start()
                 for batch_size_images, batch_size_labels in train_batch_ds:
-                    train_step(batch_size_images, batch_size_labels)
+                    train_step(step, batch_size_images, batch_size_labels)
                 t.join()
             
-            if (epoch == (NUM_EPOCHS -1)) and step == 126:
-                termination_lr_scheduling()
+            # if (epoch == (NUM_EPOCHS -1)) and step == 126:
+            #     termination_lr_scheduling()
             bar.update(step)
         
         # Last step
@@ -373,9 +376,9 @@ if __name__ == "__main__":
         
         print("Spends time({}) in Epoch {}".format(epoch+1, time.perf_counter() - start))
 
-        if prev_test_accuracy >= test_accuracy.result():
-            performance_lr_scheduling()
-        prev_test_accuracy = test_accuracy.result()
+        # if prev_test_accuracy >= test_accuracy.result():
+        #     performance_lr_scheduling()
+        # prev_test_accuracy = test_accuracy.result()
         
 
     print("끝")

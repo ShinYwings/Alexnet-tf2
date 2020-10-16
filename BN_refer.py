@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.python.ops import math_ops
 
 class BatchNormalization(tf.keras.layers.Layer):
     def __init__(self, decay=0.9, epsilon=1e-5, **kwargs):
@@ -49,7 +50,7 @@ class BatchNormalization(tf.keras.layers.Layer):
                                            offset=self.beta,
                                            scale=self.gamma,
                                            variance_epsilon=self.epsilon)
-        return output
+        return output, self.beta, self.gamma
 
     def compute_output_shape(self, input_shape):
         return input_shape
