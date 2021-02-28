@@ -237,7 +237,7 @@ if __name__ == "__main__":
 
             with tf.GradientTape() as tape:
 
-                ft, ft2, predictions = _model(images, training = True)
+                ft, ft2, predictions = (images)
                 loss = loss_object(labels, predictions)
             tf.print(tf.math.reduce_max(ft), tf.math.reduce_min(ft))
             tf.print(tf.math.reduce_max(ft2), tf.math.reduce_min(ft2))
