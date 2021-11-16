@@ -1,6 +1,5 @@
 import tensorflow as tf
 from tensorflow.keras import Model
-import tensorflow.keras
 
 class lrn(tf.keras.layers.Layer):
     def __init__(self, depth_radius="depth_radius", bias="bias", alpha= "alpha", beta= "beta"):
@@ -46,10 +45,6 @@ class mAlexNet(Model):
 
         self.lrn1 = lrn(depth_radius=self.radius, alpha=self.alpha, beta=self.beta, bias=self.bias)
         self.lrn2 = lrn(depth_radius=self.radius, alpha=self.alpha, beta=self.beta, bias=self.bias)
-        # self.lrn3 = lrn(depth_radius=self.radius, alpha=self.alpha, beta=self.beta, bias=self.bias)
-        # self.bn1 = tf.keras.layers.BatchNormalization()
-        # self.bn2 = tf.keras.layers.BatchNormalization()
-        # self.bn3 = tf.keras.layers.BatchNormalization()
 
         self.flatten = tf.keras.layers.Flatten()
         self.fc1 = tf.keras.layers.Dense(4096,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
@@ -69,37 +64,22 @@ class mAlexNet(Model):
         lrn1 = self.lrn1(cnv1)
         mp1 = self.pool1(lrn1)
 
-        # cnv1 = self.conv1(x)
-        # mp1 = self.pool1(cnv1)
-        # bn1 = self.bn1(mp1, training = training)
-
         # 2nd layer
         cnv2 = self.conv2(mp1)
         lrn2 = self.lrn2(cnv2)
         mp2 = self.pool2(lrn2)
 
-        # cnv2 = self.conv2(bn1)
-        # mp2 = self.pool2(cnv2)
-        # bn2 = self.bn2(mp2, training = training)
-
         # 3rd layer
         cnv3 = self.conv3(mp2)
-        # cnv3 = self.conv3(bn2)
 
         # 4th layer
         cnv4 = self.conv4(cnv3)
         
         # 5th layer
         cnv5 = self.conv5(cnv4)
-        # lrn3 = self.lrn3(cnv5)
         mp3 = self.pool3(cnv5)
-
-        # cnv5 = self.conv5(cnv4)
-        # mp3 = self.pool3(cnv5)
-        # bn3 = self.bn3(mp3)
         
         ft = self.flatten(mp3)
-        # ft = self.flatten(bn3)
 
         fcl1 = self.fc1(ft)
         if training:
@@ -115,4 +95,4 @@ class mAlexNet(Model):
             mul2 = self.mul2(fcl2)
             fcl3 = self.fc3(mul2)
 
-        return mp3, cnv2, fcl3
+        return fcl3

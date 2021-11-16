@@ -1,17 +1,11 @@
 import os
-import sys
-import cv2
 import tensorflow as tf
-import matplotlib.pyplot as plt
 import numpy as np
-import pickle as pk
-import time
 import loadMetaData as lmd
-import re
-from threading import Thread as t
 from multiprocessing import Process
 import math
 
+# 이미지와 라벨로부터 tfrecord 생성하는 모듈 
 # 독립적으로 실행되는 모듈
 # Reference: https://www.kaggle.com/ryanholbrook/tfrecords-basics
 

@@ -3,3 +3,4 @@ tensorboard/
 checkpoint/
 __pycache__/
 .vscode/
+notused/

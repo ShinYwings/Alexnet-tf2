@@ -1,13 +1,10 @@
-import tensorflow as tf 
-import numpy as np
+import tensorflow as tf
 import os
 import sys
 import class10_model as model
 import time
 from datetime import datetime as dt
-from matplotlib import pyplot as plt
 import optimizer_alexnet
-import cv2
 import threading
 import progressbar
 import math
@@ -237,12 +234,8 @@ if __name__ == "__main__":
 
             with tf.GradientTape() as tape:
 
-                ft, ft2, predictions = (images)
+                predictions = _model(images, training = True)
                 loss = loss_object(labels, predictions)
-            tf.print(tf.math.reduce_max(ft), tf.math.reduce_min(ft))
-            tf.print(tf.math.reduce_max(ft2), tf.math.reduce_min(ft2))
-            tf.print(tf.math.reduce_max(predictions), tf.math.reduce_min(predictions))
-            tf.print("===================")
             gradients = tape.gradient(loss, _model.trainable_variables)
             #apply gradients 가 v1의 minimize를 대체함
             _optimizer.apply_gradients(zip(gradients, _model.trainable_variables))
@@ -252,7 +245,7 @@ if __name__ == "__main__":
 
         @tf.function
         def test_step(test_images, test_labels):
-            _, _, test_predictions = _model(test_images, training =False)
+            test_predictions = _model(test_images, training =False)
             t_loss = loss_object(test_labels, test_predictions)
 
             test_loss(t_loss)
