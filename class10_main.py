@@ -14,7 +14,7 @@ LEARNING_RATE = 0.02
 NUM_EPOCHS = 90
 NUM_CLASSES = 10    # IMAGENET 2012   # 모델에는 따로 선언해줌
 MOMENTUM = 0.9 # SGD + MOMENTUM
-BATCH_SIZE = 64 # 128 batches occurs OOM in my computer
+BATCH_SIZE = 64
 
 DATASET_DIR = "/media/shin/2nd_m.2/ILSVRC2012"
 
