@@ -1,6 +1,5 @@
 import tensorflow as tf
 from tensorflow.keras import Model
-import tensorflow.keras
 
 class lrn(tf.keras.layers.Layer):
     def __init__(self, depth_radius="depth_radius", bias="bias", alpha= "alpha", beta= "beta"):
@@ -22,7 +21,7 @@ class mulLayer(tf.keras.layers.Layer):
         return tf.scalar_mul(self.weight_init,input)
 
 class mAlexNet(Model):
-    def __init__(self, LRN_INFO):
+    def __init__(self, LRN_INFO, NUM_CLASSES):
 
         super(mAlexNet, self).__init__()
 
@@ -46,13 +45,14 @@ class mAlexNet(Model):
 
         self.lrn1 = lrn(depth_radius=self.radius, alpha=self.alpha, beta=self.beta, bias=self.bias)
         self.lrn2 = lrn(depth_radius=self.radius, alpha=self.alpha, beta=self.beta, bias=self.bias)
+
         self.flatten = tf.keras.layers.Flatten()
         self.fc1 = tf.keras.layers.Dense(4096,activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
         self.dropout1 = tf.keras.layers.Dropout(0.5)
         self.fc2 = tf.keras.layers.Dense(4096, activation='relu', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
         self.dropout2 = tf.keras.layers.Dropout(0.5)
 
-        self.fc3 = tf.keras.layers.Dense(1000, activation='softmax', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
+        self.fc3 = tf.keras.layers.Dense(NUM_CLASSES, activation='softmax', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.01), bias_initializer=tf.keras.initializers.Constant(1))
 
         self.mul1 = mulLayer(weight_init=0.5)
         self.mul2 = mulLayer(weight_init=0.5)
@@ -63,7 +63,7 @@ class mAlexNet(Model):
         cnv1 = self.conv1(x)
         lrn1 = self.lrn1(cnv1)
         mp1 = self.pool1(lrn1)
-        
+
         # 2nd layer
         cnv2 = self.conv2(mp1)
         lrn2 = self.lrn2(cnv2)
@@ -71,7 +71,7 @@ class mAlexNet(Model):
 
         # 3rd layer
         cnv3 = self.conv3(mp2)
-        
+
         # 4th layer
         cnv4 = self.conv4(cnv3)
         
@@ -80,6 +80,7 @@ class mAlexNet(Model):
         mp3 = self.pool3(cnv5)
         
         ft = self.flatten(mp3)
+
         fcl1 = self.fc1(ft)
         if training:
             do1 = self.dropout1(fcl1, training= training)
